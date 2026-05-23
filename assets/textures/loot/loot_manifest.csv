@@ -1,0 +1,10 @@
+filename,category,rarity
+loot_weapon_common.png,weapon,common
+loot_armor_common.png,armor,common
+loot_trinket_common.png,trinket,common
+loot_weapon_rare.png,weapon,rare
+loot_armor_rare.png,armor,rare
+loot_trinket_rare.png,trinket,rare
+loot_weapon_legendary.png,weapon,legendary
+loot_armor_legendary.png,armor,legendary
+loot_trinket_legendary.png,trinket,legendary

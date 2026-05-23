@@ -1,0 +1,153 @@
+Start testing: May 23 11:57 EEST
+----------------------------------------------------------
+10/19 Testing: engine_souls_suite
+10/19 Test: engine_souls_suite
+Command: "/home/dev/projects/cppGame/build-release/EngineTests" "[souls]"
+Directory: /home/dev/projects/cppGame/build-release
+"engine_souls_suite" start time: May 23 11:57 EEST
+Output:
+----------------------------------------------------------
+Filters: [souls]
+Randomness seeded to: 671004580
+===============================================================================
+All tests passed (19 assertions in 4 test cases)
+
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"engine_souls_suite" end time: May 23 11:57 EEST
+"engine_souls_suite" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/19 Testing: engine_items_suite
+11/19 Test: engine_items_suite
+Command: "/home/dev/projects/cppGame/build-release/EngineTests" "[items]"
+Directory: /home/dev/projects/cppGame/build-release
+"engine_items_suite" start time: May 23 11:57 EEST
+Output:
+----------------------------------------------------------
+Filters: [items]
+Randomness seeded to: 4264523157
+===============================================================================
+All tests passed (95 assertions in 13 test cases)
+
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"engine_items_suite" end time: May 23 11:57 EEST
+"engine_items_suite" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/19 Testing: engine_save_suite
+13/19 Test: engine_save_suite
+Command: "/home/dev/projects/cppGame/build-release/EngineTests" "[save]"
+Directory: /home/dev/projects/cppGame/build-release
+"engine_save_suite" start time: May 23 11:57 EEST
+Output:
+----------------------------------------------------------
+Filters: [save]
+Randomness seeded to: 3032210163
+===============================================================================
+All tests passed (42 assertions in 5 test cases)
+
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"engine_save_suite" end time: May 23 11:57 EEST
+"engine_save_suite" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/19 Testing: engine_playthrough_suite
+18/19 Test: engine_playthrough_suite
+Command: "/home/dev/projects/cppGame/build-release/EngineTests" "[playthrough]"
+Directory: /home/dev/projects/cppGame/build-release
+"engine_playthrough_suite" start time: May 23 11:57 EEST
+Output:
+----------------------------------------------------------
+Filters: [playthrough]
+Randomness seeded to: 4288608408
+[11:57:57][INFO][GameEngine] Assets root: /home/dev/projects/cppGame/assets
+[11:57:57][INFO][GameEngine] World shader compiled.
+[11:57:57][INFO][GameEngine] UI shader compiled.
+[11:57:57][INFO][GameEngine] UI textures loaded.
+[11:57:57][INFO][GameEngine] Class sprite sheets loaded (warrior, ranger, mage).
+[11:57:57][INFO][GameEngine] World prop sprites loaded from assets.png slices.
+[11:57:57][INFO][GameEngine] Mesh buffers created.
+[11:57:57][INFO][GameEngine] Initializing gameplay systems...
+[11:57:57][INFO][GameEngine] Booting into Main Menu.
+[11:57:57][HELP][GameEngine] Click Play to choose Warrior, Ranger, or Mage.
+[11:57:57][INFO][GameEngine] GameApplication ready.
+[11:57:57][INFO][GameEngine] Play selected -> Character Select.
+[11:57:57][INFO][GameEngine] Screen -> CharacterSelect
+[11:57:57][HELP][GameEngine] Click a class box: Warrior (red), Ranger (green), Mage (purple).
+[11:57:57][INFO][GameEngine] Screen -> InGame
+[11:57:57][HELP][GameEngine] Depth 1 Plains | Souls lost on death | C level up | I gear | Esc
+[11:57:57][INFO][GameEngine] Adventure started as Warrior in Town.
+[11:57:57][INFO][GameEngine] Hover: Chest [click]
+[11:57:57][INFO][GameEngine] Move target set (-9.53674e-07, 39)
+[11:57:57][INFO][GameEngine] Hit for 16 (81 HP left)
+[11:57:57][INFO][GameEngine] Hit for 16 (65 HP left)
+[11:57:57][INFO][GameEngine] Hit for 16 (49 HP left)
+[11:57:57][INFO][GameEngine] Hit for 16 (33 HP left)
+[11:57:58][INFO][GameEngine] Hit for 16 (17 HP left)
+[11:57:58][INFO][GameEngine] Hit for 16 (1 HP left)
+[11:57:58][INFO][GameEngine] Hit for 16 (0 HP left)
+[11:57:58][INFO][GameEngine] Loot: Vital Sabatons of Legends
+[11:57:58][INFO][GameEngine] Mob defeated (+35 souls x1.00 -> x1.02)
+[11:57:58][INFO][GameEngine] Game paused.
+[11:57:58][HELP][GameEngine] Pause menu: Save and Exit (main menu) | Settings | Resume (Esc)
+[11:57:58][INFO][GameEngine] Game resumed.
+[11:57:58][INFO][GameEngine] Shutting down GameApplication.
+===============================================================================
+All tests passed (472 assertions in 1 test case)
+
+<end of output>
+Test time =   0.87 sec
+----------------------------------------------------------
+Test Passed.
+"engine_playthrough_suite" end time: May 23 11:57 EEST
+"engine_playthrough_suite" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/19 Testing: engine_performance_suite
+19/19 Test: engine_performance_suite
+Command: "/home/dev/projects/cppGame/build-release/EngineTests" "[performance]"
+Directory: /home/dev/projects/cppGame/build-release
+"engine_performance_suite" start time: May 23 11:57 EEST
+Output:
+----------------------------------------------------------
+Filters: [performance]
+Randomness seeded to: 3345991775
+[11:57:58][INFO][GameEngine] Assets root: /home/dev/projects/cppGame/assets
+[11:57:58][INFO][GameEngine] World shader compiled.
+[11:57:58][INFO][GameEngine] UI shader compiled.
+[11:57:58][INFO][GameEngine] UI textures loaded.
+[11:57:58][INFO][GameEngine] Class sprite sheets loaded (warrior, ranger, mage).
+[11:57:58][INFO][GameEngine] World prop sprites loaded from assets.png slices.
+[11:57:58][INFO][GameEngine] Mesh buffers created.
+[11:57:58][INFO][GameEngine] Initializing gameplay systems...
+[11:57:58][INFO][GameEngine] Booting into Main Menu.
+[11:57:58][HELP][GameEngine] Click Play to choose Warrior, Ranger, or Mage.
+[11:57:58][INFO][GameEngine] GameApplication ready.
+[11:57:58][INFO][GameEngine] Play selected -> Character Select.
+[11:57:58][INFO][GameEngine] Screen -> CharacterSelect
+[11:57:58][HELP][GameEngine] Click a class box: Warrior (red), Ranger (green), Mage (purple).
+[11:57:58][INFO][GameEngine] Screen -> InGame
+[11:57:58][HELP][GameEngine] Depth 1 Plains | Souls lost on death | C level up | I gear | Esc
+[11:57:58][INFO][GameEngine] Adventure started as Warrior in Town.
+[11:57:58][INFO][GameEngine] Shutting down GameApplication.
+===============================================================================
+All tests passed (42 assertions in 2 test cases)
+
+<end of output>
+Test time =   0.36 sec
+----------------------------------------------------------
+Test Passed.
+"engine_performance_suite" end time: May 23 11:57 EEST
+"engine_performance_suite" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: May 23 11:57 EEST

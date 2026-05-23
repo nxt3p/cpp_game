@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>cppGame WebGL</title>
+    <link rel="icon" href="data:,">
+    <style>
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            background: #0b0d12;
+            color: #eef2ff;
+            font-family: sans-serif;
+        }
+        #wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100%;
+            gap: 12px;
+        }
+        canvas.emscripten {
+            border: 1px solid #3a4258;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+        }
+        #status {
+            opacity: 0.85;
+        }
+    </style>
+</head>
+<body>
+    <div id="wrap">
+        <div id="status">Loading WebGL build...</div>
+        <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    </div>
+    <script>
+        const statusNode = document.getElementById("status");
+        const canvas = document.getElementById("canvas");
+        window.Module = {
+            canvas: canvas,
+            setStatus: (text) => {
+                if (statusNode) {
+                    statusNode.textContent = text;
+                }
+            },
+            onRuntimeInitialized: () => {
+                if (statusNode) {
+                    statusNode.textContent = "WebGL runtime ready";
+                }
+            }
+        };
+    </script>
+    <script async src="GameEngine.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+/home/dev/projects/cppGame/build-release/CMakeFiles/EngineCore.dir
+/home/dev/projects/cppGame/build-release/CMakeFiles/EngineGameplay.dir
+/home/dev/projects/cppGame/build-release/CMakeFiles/GameEngine.dir
+/home/dev/projects/cppGame/build-release/CMakeFiles/EngineTests.dir
+/home/dev/projects/cppGame/build-release/CMakeFiles/test.dir
+/home/dev/projects/cppGame/build-release/CMakeFiles/edit_cache.dir
+/home/dev/projects/cppGame/build-release/CMakeFiles/rebuild_cache.dir
+/home/dev/projects/cppGame/build-release/_deps/catch2-build/CMakeFiles/test.dir
+/home/dev/projects/cppGame/build-release/_deps/catch2-build/CMakeFiles/edit_cache.dir
+/home/dev/projects/cppGame/build-release/_deps/catch2-build/CMakeFiles/rebuild_cache.dir
+/home/dev/projects/cppGame/build-release/_deps/catch2-build/src/CMakeFiles/Catch2.dir
+/home/dev/projects/cppGame/build-release/_deps/catch2-build/src/CMakeFiles/Catch2WithMain.dir
+/home/dev/projects/cppGame/build-release/_deps/catch2-build/src/CMakeFiles/test.dir
+/home/dev/projects/cppGame/build-release/_deps/catch2-build/src/CMakeFiles/edit_cache.dir
+/home/dev/projects/cppGame/build-release/_deps/catch2-build/src/CMakeFiles/rebuild_cache.dir
