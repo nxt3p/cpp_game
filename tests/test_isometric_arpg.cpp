@@ -114,6 +114,21 @@ TEST_CASE("Generated warrior atlas JSON maps 8-direction clips", "[iso][atlas]")
     CHECK(ui.find("globe_ring") != nullptr);
     CHECK(ui.find("hotbar_frame") != nullptr);
     CHECK(ui.find("inventory_panel") != nullptr);
+    CHECK(ui.find("parchment") != nullptr);
+    CHECK(ui.find("nebula") != nullptr);
+    CHECK(ui.find("level_badge") != nullptr);
+    CHECK(ui.find("potion_vial") != nullptr);
+    CHECK(ui.find("skill_power_strike") != nullptr);
+    CHECK(ui.find("skill_firebolt") != nullptr);
+    CHECK(ui.find("menu_abilities") != nullptr);
+    CHECK(ui.find("menu_pause") != nullptr);
+
+    render::DirectionalAtlas ranger;
+    REQUIRE(ranger.loadFromFile(std::string(ENGINE_ASSETS_DIR) + "/textures/generated/ranger_atlas.json"));
+    CHECK(ranger.find("walk") != nullptr);
+    render::DirectionalAtlas mage;
+    REQUIRE(mage.loadFromFile(std::string(ENGINE_ASSETS_DIR) + "/textures/generated/mage_atlas.json"));
+    CHECK(mage.find("cast") != nullptr);
 
     render::NamedAtlas items;
     REQUIRE(items.loadFromFile(std::string(ENGINE_ASSETS_DIR) + "/textures/generated/items_atlas.json"));

@@ -1,5 +1,7 @@
 #include "game/GameApplication.hpp"
 
+#include <algorithm>
+
 #include "game/SaveGame.hpp"
 #include "game/AppFlow.hpp"
 #include "game/CombatFeedback.hpp"
@@ -264,6 +266,85 @@ struct MobScreenPlate {
         break;
     }
     return "charm";
+}
+
+[[nodiscard]] const char* skillIconFrame(const systems::SkillId id) noexcept {
+    switch (id) {
+    case systems::SkillId::PowerStrike:
+        return "skill_power_strike";
+    case systems::SkillId::Whirlwind:
+        return "skill_whirlwind";
+    case systems::SkillId::Heal:
+        return "skill_heal";
+    case systems::SkillId::Dash:
+        return "skill_dash";
+    case systems::SkillId::Cleave:
+        return "skill_cleave";
+    case systems::SkillId::Firebolt:
+        return "skill_firebolt";
+    case systems::SkillId::Shout:
+        return "skill_shout";
+    case systems::SkillId::Slam:
+        return "skill_slam";
+    case systems::SkillId::None:
+        break;
+    }
+    return nullptr;
+}
+
+[[nodiscard]] const char* menuIconFrame(const int index) noexcept {
+    switch (index) {
+    case 0:
+        return "menu_abilities";
+    case 1:
+        return "menu_inventory";
+    case 2:
+        return "menu_map";
+    case 3:
+        return "menu_settings";
+    case 4:
+        return "menu_pause";
+    default:
+        break;
+    }
+    return nullptr;
+}
+
+[[nodiscard]] const char* equipmentSlotIcon(const systems::EquipmentSlotKind slot) noexcept {
+    switch (slot) {
+    case systems::EquipmentSlotKind::Head:
+        return "head";
+    case systems::EquipmentSlotKind::Shoulders:
+        return "shoulders";
+    case systems::EquipmentSlotKind::Chest:
+        return "chest";
+    case systems::EquipmentSlotKind::Hands:
+        return "hands";
+    case systems::EquipmentSlotKind::Waist:
+        return "waist";
+    case systems::EquipmentSlotKind::Legs:
+        return "legs";
+    case systems::EquipmentSlotKind::Feet:
+        return "feet";
+    case systems::EquipmentSlotKind::Weapon:
+        return "weapon";
+    case systems::EquipmentSlotKind::OffHand:
+        return "offhand";
+    case systems::EquipmentSlotKind::Amulet:
+        return "amulet";
+    case systems::EquipmentSlotKind::RingLeft:
+    case systems::EquipmentSlotKind::RingRight:
+        return "ring";
+    case systems::EquipmentSlotKind::Cloak:
+        return "cloak";
+    case systems::EquipmentSlotKind::Charm:
+        return "charm";
+    case systems::EquipmentSlotKind::Relic:
+        return "relic";
+    case systems::EquipmentSlotKind::Count:
+        break;
+    }
+    return nullptr;
 }
 
 [[nodiscard]] const char* lootCeilingLabel(const gameplay::LootCeiling ceiling) noexcept {
@@ -3008,6 +3089,25 @@ struct GameApplication::Impl {
         }
 
         if (!playerEquipment.isSlotOccupied(equipmentSlot)) {
+            const char* ghost = equipmentSlotIcon(equipmentSlot);
+            if (ghost != nullptr && itemIcons_.isLoaded()) {
+                const render::UiFrameUv uv = itemIcons_.uvFor(ghost);
+                if (uv.valid) {
+                    const float tint[4] = {1.0F, 1.0F, 1.0F, 0.42F};
+                    const float pad = 7.0F;
+                    uiRenderer.drawTexturedRectUV(
+                        itemIcons_.texture(),
+                        slot.x + pad,
+                        slot.y + pad,
+                        std::max(1.0F, slot.width - pad * 2.0F),
+                        std::max(1.0F, slot.height - pad * 2.0F),
+                        uv.u0,
+                        uv.v0,
+                        uv.u1,
+                        uv.v1,
+                        tint);
+                }
+            }
             return;
         }
 
@@ -3060,6 +3160,10 @@ struct GameApplication::Impl {
             return;
         }
 
+        const char* ghost = equipmentSlotIcon(equipmentSlot);
+        if (ghost != nullptr && itemIcons_.isLoaded() && itemIcons_.uvFor(ghost).valid) {
+            return;
+        }
         const char slotLetter[2] = {systems::Equipment::slotAbbreviation(equipmentSlot), '\0'};
         const float ghostColor[4] = {0.55F, 0.58F, 0.65F, 0.75F};
         const float letterWidth = textRenderer.measureTextWidth(slotLetter, letterScale);
@@ -6169,8 +6273,10 @@ struct GameApplication::Impl {
             uiRenderer.drawFilledRect(panel.x, panel.y, panel.width, panel.height, panelColor);
             uiRenderer.drawOutlineRect(panel.x, panel.y, panel.width, panel.height, borderColor);
         }
-        const float plaqueGold[4] = {0.72F, 0.56F, 0.22F, 0.95F};
-        uiRenderer.drawOutlineRect(panel.x, panel.y, panel.width, panel.height, plaqueGold, 2.0F);
+        if (!drawOrnateWindow(panel)) {
+            const float plaqueGold[4] = {0.72F, 0.56F, 0.22F, 0.95F};
+            uiRenderer.drawOutlineRect(panel.x, panel.y, panel.width, panel.height, plaqueGold, 2.0F);
+        }
         const float titleFill[4] = {0.42F, 0.08F, 0.09F, 0.92F};
         uiRenderer.drawFilledRect(
             panel.x + currentUiScale().dim(8.0F),
@@ -6641,35 +6747,41 @@ struct GameApplication::Impl {
         const float frame[4] = {0.04F, 0.035F, 0.05F, 0.96F};
         const float gold[4] = {0.72F, 0.52F, 0.18F, 1.0F};
         uiRenderer.drawFilledRect(panel.panel.x, panel.panel.y, panel.panel.width, panel.panel.height, frame);
-        uiRenderer.drawOutlineRect(panel.panel.x, panel.panel.y, panel.panel.width, panel.panel.height, gold, 2.0F);
+        if (!drawOrnateWindow(panel.panel)) {
+            uiRenderer.drawOutlineRect(panel.panel.x, panel.panel.y, panel.panel.width, panel.panel.height, gold, 2.0F);
+        }
         const float titleFill[4] = {0.42F, 0.08F, 0.09F, 0.95F};
         uiRenderer.drawFilledRect(
             panel.titleBand.x, panel.titleBand.y, panel.titleBand.width, panel.titleBand.height, titleFill);
 
         const float parchment[4] = {0.62F, 0.48F, 0.30F, 0.96F};
         const float ink[4] = {0.28F, 0.16F, 0.08F, 1.0F};
-        uiRenderer.drawFilledRect(
-            panel.spellsPane.x, panel.spellsPane.y, panel.spellsPane.width, panel.spellsPane.height, parchment);
-        uiRenderer.drawOutlineRect(
-            panel.spellsPane.x, panel.spellsPane.y, panel.spellsPane.width, panel.spellsPane.height, ink, 2.0F);
+        if (!drawGeneratedFrame("parchment", panel.spellsPane)) {
+            uiRenderer.drawFilledRect(
+                panel.spellsPane.x, panel.spellsPane.y, panel.spellsPane.width, panel.spellsPane.height, parchment);
+            uiRenderer.drawOutlineRect(
+                panel.spellsPane.x, panel.spellsPane.y, panel.spellsPane.width, panel.spellsPane.height, ink, 2.0F);
+        }
 
         const float nebula[4] = {0.03F, 0.03F, 0.08F, 0.94F};
-        uiRenderer.drawFilledRect(
-            panel.talentsPane.x, panel.talentsPane.y, panel.talentsPane.width, panel.talentsPane.height, nebula);
-        const float redWash[4] = {0.55F, 0.08F, 0.05F, 0.28F};
-        const float blueWash[4] = {0.08F, 0.16F, 0.55F, 0.38F};
-        uiRenderer.drawFilledRect(
-            panel.talentsPane.x,
-            panel.talentsPane.y,
-            panel.talentsPane.width * 0.48F,
-            panel.talentsPane.height,
-            redWash);
-        uiRenderer.drawFilledRect(
-            panel.talentsPane.x + panel.talentsPane.width * 0.48F,
-            panel.talentsPane.y,
-            panel.talentsPane.width * 0.52F,
-            panel.talentsPane.height,
-            blueWash);
+        if (!drawGeneratedFrame("nebula", panel.talentsPane)) {
+            uiRenderer.drawFilledRect(
+                panel.talentsPane.x, panel.talentsPane.y, panel.talentsPane.width, panel.talentsPane.height, nebula);
+            const float redWash[4] = {0.55F, 0.08F, 0.05F, 0.28F};
+            const float blueWash[4] = {0.08F, 0.16F, 0.55F, 0.38F};
+            uiRenderer.drawFilledRect(
+                panel.talentsPane.x,
+                panel.talentsPane.y,
+                panel.talentsPane.width * 0.48F,
+                panel.talentsPane.height,
+                redWash);
+            uiRenderer.drawFilledRect(
+                panel.talentsPane.x + panel.talentsPane.width * 0.48F,
+                panel.talentsPane.y,
+                panel.talentsPane.width * 0.52F,
+                panel.talentsPane.height,
+                blueWash);
+        }
 
         drawPortraitInRect(panel.portrait);
         drawResourceBars(panel.hpBar, panel.xpBar);
@@ -6687,7 +6799,15 @@ struct GameApplication::Impl {
                 const float fill[4] = {skill.colorR * 0.35F, skill.colorG * 0.35F, skill.colorB * 0.35F, 0.95F};
                 const float border[4] = {skill.colorR, skill.colorG, skill.colorB, 1.0F};
                 uiRenderer.drawFilledRect(icon.x, icon.y, icon.width, icon.height, fill);
-                uiRenderer.drawOutlineRect(icon.x, icon.y, icon.width, icon.height, border, 2.0F);
+                if (!drawGeneratedFrame("hotbar_frame", icon)) {
+                    uiRenderer.drawOutlineRect(icon.x, icon.y, icon.width, icon.height, border, 2.0F);
+                }
+                const char* iconName = skillIconFrame(skill.id);
+                if (iconName != nullptr) {
+                    const float inset = icon.width * 0.08F;
+                    const ui::Rect glyph{icon.x + inset, icon.y + inset, icon.width - inset * 2.0F, icon.height - inset * 2.0F};
+                    drawGeneratedFrame(iconName, glyph);
+                }
             }
         };
         paintSection(board.basic, basicIds);
@@ -6758,6 +6878,9 @@ struct GameApplication::Impl {
             const float glyph[4] = {0.98F, 0.96F, 0.9F, 1.0F};
             for (int index = 0; index < section.iconCount; ++index) {
                 const systems::SkillDefinition& skill = systems::skillDefinition(ids[index]);
+                if (generatedFrameReady(skillIconFrame(skill.id))) {
+                    continue;
+                }
                 const char letter[2] = {skill.glyph, '\0'};
                 textRenderer.drawTextCentered(section.icons[static_cast<std::size_t>(index)], letter, panel.bodyScale, glyph);
             }
@@ -7027,17 +7150,86 @@ struct GameApplication::Impl {
         }
     }
 
-    void drawGeneratedFrame(const char* name, const ui::Rect& rect) const {
-        if (!generatedUi_.isLoaded()) {
-            return;
+    [[nodiscard]] bool generatedFrameReady(const char* name) const noexcept {
+        return name != nullptr && generatedUi_.isLoaded() && generatedUi_.uvFor(name).valid;
+    }
+
+    bool drawGeneratedFrame(const char* name, const ui::Rect& rect, const float alpha = 1.0F) const {
+        if (!generatedUi_.isLoaded() || name == nullptr || rect.width < 1.0F || rect.height < 1.0F) {
+            return false;
         }
         const render::UiFrameUv uv = generatedUi_.uvFor(name);
         if (!uv.valid) {
-            return;
+            return false;
         }
-        const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+        const float tint[4] = {1.0F, 1.0F, 1.0F, alpha};
         uiRenderer.drawTexturedRectUV(
-            generatedUi_.texture(), rect.x, rect.y, rect.width, rect.height, uv.u0, uv.v0, uv.u1, uv.v1, white);
+            generatedUi_.texture(), rect.x, rect.y, rect.width, rect.height, uv.u0, uv.v0, uv.u1, uv.v1, tint);
+        return true;
+    }
+
+    /// Ornate atlas frame. Source border stays on the filigree corners; the center of the frame is empty.
+    bool drawGeneratedNineSlice(
+        const char* name,
+        const ui::Rect& rect,
+        const float sourceBorder,
+        const float destBorder) const {
+        if (!generatedUi_.isLoaded() || name == nullptr || sourceBorder < 1.0F || destBorder < 1.0F) {
+            return false;
+        }
+        const render::UiFrameUv uv = generatedUi_.uvFor(name);
+        const render::Texture& texture = generatedUi_.texture();
+        if (!uv.valid || texture.width() <= 0 || texture.height() <= 0) {
+            return false;
+        }
+        const float border = std::min(destBorder, std::min(rect.width, rect.height) * 0.45F);
+        if (border < 1.0F) {
+            return false;
+        }
+        const float texW = static_cast<float>(texture.width());
+        const float texH = static_cast<float>(texture.height());
+        const float du = sourceBorder / texW;
+        const float dv = sourceBorder / texH;
+        const float u0 = uv.u0;
+        const float u1 = uv.u0 + du;
+        const float u2 = uv.u1 - du;
+        const float u3 = uv.u1;
+        const float vTop = uv.v1;
+        const float vUpper = uv.v1 - dv;
+        const float vLower = uv.v0 + dv;
+        const float vBot = uv.v0;
+        const float x0 = rect.x;
+        const float x1 = rect.x + border;
+        const float x2 = rect.x + rect.width - border;
+        const float y0 = rect.y;
+        const float y1 = rect.y + border;
+        const float y2 = rect.y + rect.height - border;
+        const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+        const auto piece = [&](const float x, const float y, const float w, const float h, const float ua, const float va, const float ub, const float vb) {
+            if (w < 0.5F || h < 0.5F) {
+                return;
+            }
+            uiRenderer.drawTexturedRectUV(texture, x, y, w, h, ua, va, ub, vb, white);
+        };
+        piece(x0, y0, border, border, u0, vUpper, u1, vTop);
+        piece(x1, y0, std::max(0.0F, x2 - x1), border, u1, vUpper, u2, vTop);
+        piece(x2, y0, border, border, u2, vUpper, u3, vTop);
+        piece(x0, y1, border, std::max(0.0F, y2 - y1), u0, vLower, u1, vUpper);
+        piece(x2, y1, border, std::max(0.0F, y2 - y1), u2, vLower, u3, vUpper);
+        piece(x0, y2, border, border, u0, vBot, u1, vLower);
+        piece(x1, y2, std::max(0.0F, x2 - x1), border, u1, vBot, u2, vLower);
+        piece(x2, y2, border, border, u2, vBot, u3, vLower);
+        return true;
+    }
+
+    bool drawOrnateWindow(const ui::Rect& rect) const {
+        const float border = std::clamp(std::min(rect.width, rect.height) * 0.035F, 16.0F, 40.0F);
+        const ui::Rect framed{
+            rect.x - border * 0.42F,
+            rect.y - border * 0.55F,
+            rect.width + border * 0.84F,
+            rect.height + border * 0.95F};
+        return drawGeneratedNineSlice("inventory_panel", framed, 40.0F, border);
     }
 
     [[nodiscard]] int countBeltPotions() const {
@@ -7107,16 +7299,29 @@ struct GameApplication::Impl {
 
         const float badge[4] = {0.08F, 0.02F, 0.02F, 0.82F};
         const float badgeRim[4] = {0.85F, 0.62F, 0.2F, 0.95F};
-        uiRenderer.drawFilledRect(
-            console.levelBadge.x, console.levelBadge.y, console.levelBadge.width, console.levelBadge.height, badge);
-        uiRenderer.drawOutlineRect(
-            console.levelBadge.x, console.levelBadge.y, console.levelBadge.width, console.levelBadge.height, badgeRim, 1.0F);
+        const ui::Rect badgePlate{
+            console.levelBadge.x,
+            console.levelBadge.y - scale.dim(2.0F),
+            console.levelBadge.width,
+            console.levelBadge.height + scale.dim(4.0F)};
+        if (!drawGeneratedFrame("level_badge", badgePlate)) {
+            uiRenderer.drawFilledRect(
+                console.levelBadge.x, console.levelBadge.y, console.levelBadge.width, console.levelBadge.height, badge);
+            uiRenderer.drawOutlineRect(
+                console.levelBadge.x, console.levelBadge.y, console.levelBadge.width, console.levelBadge.height, badgeRim, 1.0F);
+        }
 
         const ui::CharacterScreenData& base = overlayState.characterScreen();
         const int nextXp = std::max(base.experienceToNextLevel, 1);
         const float xpRatio = std::clamp(static_cast<float>(base.experience) / static_cast<float>(nextXp), 0.0F, 1.0F);
         const float xpEmpty[4] = {0.08F, 0.07F, 0.05F, 0.9F};
         const float xpFill[4] = {0.92F, 0.72F, 0.2F, 1.0F};
+        const ui::Rect xpTrack{
+            console.xpBar.x,
+            console.xpBar.y - scale.dim(3.0F),
+            console.xpBar.width,
+            console.xpBar.height + scale.dim(6.0F)};
+        drawGeneratedFrame("xp_track", xpTrack);
         uiRenderer.drawFilledRect(console.xpBar.x, console.xpBar.y, console.xpBar.width, console.xpBar.height, xpEmpty);
         if (xpRatio > 0.0F) {
             uiRenderer.drawFilledRect(
@@ -7133,9 +7338,13 @@ struct GameApplication::Impl {
             }
             const systems::SkillDefinition& skill = systems::skillDefinition(skillBar_.slot(slot));
             const ui::Rect glyph = ui::hudGlyphRect(bounds, keyBand);
-            const float pad = glyph.width * 0.14F;
+            const float pad = glyph.width * 0.08F;
             const float fill[4] = {skill.colorR * 0.55F, skill.colorG * 0.55F, skill.colorB * 0.55F, 0.92F};
             uiRenderer.drawFilledRect(glyph.x + pad, glyph.y + pad, glyph.width - pad * 2.0F, glyph.height - pad * 2.0F, fill);
+            const char* iconName = skillIconFrame(skill.id);
+            if (iconName != nullptr) {
+                drawGeneratedFrame(iconName, glyph);
+            }
             const float ratio = skillBar_.cooldownRatio(slot);
             if (ratio > 0.0F) {
                 uiRenderer.drawRadialCooldown(
@@ -7154,19 +7363,29 @@ struct GameApplication::Impl {
                 uiRenderer.drawOutlineRect(bounds.x, bounds.y, bounds.width, bounds.height, trim, 2.0F);
             }
             if (beltIndex == 0) {
-                const float vial[4] = {0.75F, 0.1F, 0.12F, 0.95F};
-                const float pad = bounds.width * 0.22F;
-                uiRenderer.drawFilledRect(
-                    bounds.x + pad, bounds.y + pad, bounds.width - pad * 2.0F, bounds.height - pad * 2.0F, vial);
-                systems::ItemMetadata potion{};
-                potion.category = systems::ItemCategory::Consumable;
-                drawItemIcon(bounds, potion);
+                const ui::Rect vialRect{
+                    bounds.x + bounds.width * 0.16F,
+                    bounds.y + bounds.height * 0.06F,
+                    bounds.width * 0.68F,
+                    bounds.height * 0.70F};
+                if (!drawGeneratedFrame("potion_vial", vialRect)) {
+                    const float vial[4] = {0.75F, 0.1F, 0.12F, 0.95F};
+                    const float pad = bounds.width * 0.22F;
+                    uiRenderer.drawFilledRect(
+                        bounds.x + pad, bounds.y + pad, bounds.width - pad * 2.0F, bounds.height - pad * 2.0F, vial);
+                    systems::ItemMetadata potion{};
+                    potion.category = systems::ItemCategory::Consumable;
+                    drawItemIcon(bounds, potion);
+                }
             }
             ++beltIndex;
         }
 
         for (int index = 0; index < ui::HudConsoleLayout::kMenuIconCount; ++index) {
             const ui::Rect& icon = console.menuIcons[static_cast<std::size_t>(index)];
+            if (drawGeneratedFrame(menuIconFrame(index), icon)) {
+                continue;
+            }
             const bool hovered = hoveredHudMenu_ == index;
             const float cx = icon.x + icon.width * 0.5F;
             const float cy = icon.y + icon.height * 0.5F;
@@ -7235,7 +7454,7 @@ struct GameApplication::Impl {
                 seconds << remaining;
                 const float coolText[4] = {1.0F, 0.92F, 0.75F, 1.0F};
                 textRenderer.drawTextCentered(ui::hudGlyphRect(bounds, keyBand), seconds.str().c_str(), console.hotkeyScale, coolText);
-            } else {
+            } else if (!generatedFrameReady(skillIconFrame(skill.id))) {
                 textRenderer.drawTextCentered(ui::hudGlyphRect(bounds, keyBand), glyph, console.labelScale, text);
             }
             const char hotkey[2] = {static_cast<char>('1' + slot), '\0'};
@@ -7246,11 +7465,19 @@ struct GameApplication::Impl {
         std::ostringstream potionCount;
         potionCount << potions;
         const float potionColor[4] = {1.0F, 0.9F, 0.85F, 1.0F};
-        textRenderer.drawTextCentered(console.beltSlots[0], potionCount.str().c_str(), console.labelScale, potionColor);
+        const ui::Rect potionCountRect{
+            console.beltSlots[0].x,
+            console.beltSlots[0].y,
+            console.beltSlots[0].width,
+            keyBand};
+        textRenderer.drawTextCentered(potionCountRect, potionCount.str().c_str(), console.hotkeyScale, potionColor);
         textRenderer.drawTextCentered(ui::hudHotkeyRect(console.beltSlots[0], keyBand), "Q", console.hotkeyScale, hotkeyColor);
 
         const char* menuGlyphs[ui::HudConsoleLayout::kMenuIconCount] = {"C", "I", "M", "S", "P"};
         for (int index = 0; index < ui::HudConsoleLayout::kMenuIconCount; ++index) {
+            if (generatedFrameReady(menuIconFrame(index))) {
+                continue;
+            }
             const float menuColor[4] = {
                 hoveredHudMenu_ == index ? 1.0F : 0.92F,
                 hoveredHudMenu_ == index ? 0.86F : 0.74F,

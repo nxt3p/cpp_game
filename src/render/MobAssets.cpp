@@ -57,11 +57,16 @@ bool MobAssets::load(const std::string& mobsDirectory) {
                          classSheets_[2].loadFromFile(root + "mage.png");
 
     const std::string generated = generatedDirectory(root);
-    SpriteSheet generatedWarrior;
-    if (loadDirectionalSheet(generatedWarrior, generated + "/warrior_atlas.png", generated + "/warrior_atlas.json")) {
-        classSheets_[0] = std::move(generatedWarrior);
-        classSheetsLoaded_ = classSheets_[1].isValid() && classSheets_[2].isValid();
-    }
+    const auto adoptGeneratedClass = [&](const std::size_t index, const char* pngName, const char* jsonName) {
+        SpriteSheet sheet;
+        if (loadDirectionalSheet(sheet, generated + pngName, generated + jsonName)) {
+            classSheets_[index] = std::move(sheet);
+        }
+    };
+    adoptGeneratedClass(0U, "/warrior_atlas.png", "/warrior_atlas.json");
+    adoptGeneratedClass(1U, "/ranger_atlas.png", "/ranger_atlas.json");
+    adoptGeneratedClass(2U, "/mage_atlas.png", "/mage_atlas.json");
+    classSheetsLoaded_ = classSheets_[0].isValid() && classSheets_[1].isValid() && classSheets_[2].isValid();
 
     SpriteSheet generatedMonster;
     generatedMonster_ = loadDirectionalSheet(
