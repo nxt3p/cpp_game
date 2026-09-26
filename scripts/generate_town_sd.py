@@ -23,10 +23,13 @@ Flux (after the license click and ``huggingface-cli login``)::
 committed pixel-art stand-ins with Pillow and does not need CUDA. A GPU run
 overwrites those files.
 
+The backdrop is only ground and sky. Each building is its own transparent
+sprite (ruined and repaired). ``adventure.png`` is a crossed-swords icon for
+the Start Adventure control, not a road strip.
+
 SDXL and Flux paint an opaque canvas. ``--cutouts`` (no GPU) punches the flat
-sky and gray mats, keeps the largest sprite, and crops it so the plates blend
-over the dusk backdrop. A GPU run does that step automatically. Reprocess the
-committed plates on any machine with Pillow::
+sky and gray mats and keeps the largest sprite. A GPU run does that step
+automatically. Reprocess the committed plates on any machine with Pillow::
 
   python scripts/generate_town_sd.py --cutouts
 """
@@ -72,8 +75,8 @@ STYLE = (
 JOBS = (
     (
         "backdrop",
-        "wide dusk meadow outside a ruined fantasy town, indigo sky fading to amber, "
-        "large moon, soft hills, cobbled plaza, warm lanterns, no buildings in front, no people",
+        "top-down dusk town plaza ground only, cobblestones, dirt paths, grass edges, "
+        "indigo sky fading to amber, distant hills, no buildings, no people, no text",
         1280,
         720,
         5101,
@@ -81,8 +84,8 @@ JOBS = (
     ),
     (
         "forge_ruined",
-        "one ruined stone blacksmith forge, collapsed roof, cold dark windows, rubble, "
-        "isolated building centered, flat solid gray background",
+        "one ruined stone blacksmith building only, collapsed roof, cold windows, "
+        "single centered sprite, flat solid light-gray background, no extra doors",
         768,
         1024,
         5102,
@@ -90,8 +93,8 @@ JOBS = (
     ),
     (
         "forge_repaired",
-        "one restored fantasy blacksmith forge, intact timber roof, blazing orange forge mouth, "
-        "warm windows, chimney smoke, isolated building centered, flat solid gray background",
+        "one restored fantasy blacksmith building only, timber roof, blazing forge mouth, "
+        "single centered sprite, flat solid light-gray background, no extra objects",
         768,
         1024,
         5103,
@@ -99,8 +102,8 @@ JOBS = (
     ),
     (
         "chapel_ruined",
-        "one ruined stone chapel, broken steeple, dark empty windows, rubble at the door, "
-        "isolated building centered, flat solid gray background",
+        "one ruined stone chapel building only, broken steeple, dark windows, "
+        "single centered sprite, flat solid light-gray background, no extra doors",
         768,
         1024,
         5104,
@@ -108,8 +111,8 @@ JOBS = (
     ),
     (
         "chapel_repaired",
-        "one restored stone chapel at dusk, tall steeple, warm rose window, gold lantern light, "
-        "isolated building centered, flat solid gray background",
+        "one restored stone chapel building only, tall steeple, warm window, "
+        "single centered sprite, flat solid light-gray background, no extra objects",
         768,
         1024,
         5105,
@@ -117,8 +120,8 @@ JOBS = (
     ),
     (
         "tavern_ruined",
-        "one ruined timber tavern, sagging roof, dark boarded windows, broken hanging sign, "
-        "isolated building centered, flat solid gray background",
+        "one ruined timber tavern building only, sagging roof, dark windows, "
+        "single centered sprite, flat solid light-gray background, no extra doors",
         768,
         1024,
         5106,
@@ -126,19 +129,19 @@ JOBS = (
     ),
     (
         "tavern_repaired",
-        "one cozy restored fantasy tavern, red roof, glowing windows, hanging lantern, "
-        "isolated building centered, flat solid gray background",
+        "one cozy restored fantasy tavern building only, red roof, glowing windows, "
+        "single centered sprite, flat solid light-gray background, no extra objects",
         768,
         1024,
         5107,
         True,
     ),
     (
-        "road",
-        "a low stone town gate and cobbled road leading away at dusk, two lanterns, "
-        "wide banner composition, no text, flat solid gray background",
-        1280,
-        320,
+        "adventure",
+        "two crossed fantasy longswords, game icon, steel blades, gold hilts, "
+        "single centered object, flat solid light-gray background, no text, no scenery",
+        768,
+        768,
         5108,
         True,
     ),
@@ -270,22 +273,34 @@ def paint_tavern(Image, ImageDraw, restored: bool):
     return image
 
 
-def paint_road(Image, ImageDraw):
+def paint_adventure(Image, ImageDraw):
+    """Crossed swords on a transparent canvas. The town CTA, not a road strip."""
     scale = 4
-    w, h = 240, 56
-    image = Image.new("RGBA", (w * scale, h * scale), (0, 0, 0, 0))
+    size = 64
+    image = Image.new("RGBA", (size * scale, size * scale), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    for y in range(18, 56, 8):
-        for x in range(0, 240, 12):
-            stone = (124, 96, 68, 255) if ((x // 12 + y // 8) % 2) == 0 else (86, 62, 42, 255)
-            _block(draw, x, y, 11, 7, stone, scale)
-    _block(draw, 36, 8, 8, 48, (58, 42, 32, 255), scale)
-    _block(draw, 196, 8, 8, 48, (58, 42, 32, 255), scale)
-    _block(draw, 36, 8, 168, 8, (112, 74, 42, 255), scale)
-    _block(draw, 34, 4, 12, 8, (255, 186, 84, 255), scale)
-    _block(draw, 194, 4, 12, 8, (255, 186, 84, 255), scale)
-    _block(draw, 96, 28, 36, 3, (236, 206, 120, 255), scale)
-    _poly(draw, [(132, 22), (148, 29), (132, 36)], (236, 206, 120, 255), scale)
+    steel = (214, 220, 232, 255)
+    edge = (255, 236, 176, 255)
+    grip = (92, 48, 28, 255)
+    gold = (232, 186, 72, 255)
+
+    def sword(x0: int, y0: int, x1: int, y1: int) -> None:
+        steps = 28
+        for step in range(steps + 1):
+            t = step / steps
+            x = x0 + (x1 - x0) * t
+            y = y0 + (y1 - y0) * t
+            radius = 2 if step % 3 else 3
+            color = edge if step % 4 == 0 else steel
+            draw.ellipse(
+                [(x - radius) * scale, (y - radius) * scale, (x + radius) * scale, (y + radius) * scale],
+                fill=color,
+            )
+        draw.rectangle([x0 * scale - 6, y0 * scale - 4, x0 * scale + 18, y0 * scale + 10], fill=gold)
+        draw.rectangle([x0 * scale + 2, y0 * scale + 6, x0 * scale + 10, y0 * scale + 22], fill=grip)
+
+    sword(14, 50, 50, 14)
+    sword(14, 14, 50, 50)
     return image
 
 
@@ -300,7 +315,7 @@ def write_placeholders() -> None:
         "chapel_repaired.png": paint_chapel(Image, ImageDraw, True),
         "tavern_ruined.png": paint_tavern(Image, ImageDraw, False),
         "tavern_repaired.png": paint_tavern(Image, ImageDraw, True),
-        "road.png": paint_road(Image, ImageDraw),
+        "adventure.png": paint_adventure(Image, ImageDraw),
     }
     for name, image in files.items():
         path = OUT / name

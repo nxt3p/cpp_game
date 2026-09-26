@@ -131,13 +131,15 @@ struct HudChromeLayout {
     Rect messageStrip{};
 };
 
-/// Static town illustration hotspots. Buildings do not overlap each other or the road.
+/// Static town plaza. Buildings are separate sprites, not a three-column strip.
+/// `road` is the Start Adventure control on the right. `exitButton` dismisses a building UI.
 struct TownSceneLayout {
     Rect blacksmith{};
     Rect tavern{};
     Rect healer{};
     Rect road{};
     Rect notice{};
+    Rect exitButton{};
     Rect servicePanel{};
     Rect serviceTitle{};
     Rect serviceBody{};
@@ -155,6 +157,17 @@ struct TownSceneLayout {
 /// Building painting sits above a short caption so the label does not slice the sprite.
 [[nodiscard]] Rect townBuildingArtRect(const Rect& hotspot) noexcept;
 [[nodiscard]] Rect townBuildingCaptionRect(const Rect& hotspot) noexcept;
+
+/// Fits the opaque pixel box of a plate into `art`, bottom-aligned and centered.
+/// `v0`/`v1` are top-left image fractions (0 at the top of the PNG).
+[[nodiscard]] Rect townOpaqueSpriteRect(
+    const Rect& art,
+    float textureWidth,
+    float textureHeight,
+    float u0,
+    float v0,
+    float u1,
+    float v1) noexcept;
 
 enum class SettingsRowKind : std::uint8_t { Cycle, Slider };
 

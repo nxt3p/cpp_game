@@ -807,26 +807,102 @@ TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept {
     const float width = static_cast<float>(std::max(scale.width, 1));
     const float height = static_cast<float>(std::max(scale.height, 1));
     const float margin = std::max(8.0F, width * 0.018F);
-    const float gap = std::max(6.0F, width * 0.012F);
-    const float top = std::clamp(height * 0.08F, 24.0F, 72.0F);
     const float consoleBand = std::min(scale.dim(kReferenceHudConsoleHeight), height * 0.34F);
     const float consoleTop = height - consoleBand;
-    const float roadH = std::clamp(std::max(36.0F, scale.minTouchTarget()), 36.0F, 72.0F);
-    const float usableBottom = std::max(top + roadH + gap + 48.0F, std::min(consoleTop - 6.0F, height - 4.0F));
-    const float buildingW = std::max(1.0F, (width - margin * 2.0F - gap * 2.0F) / 3.0F);
-    float buildingH = usableBottom - top - gap - roadH;
-    if (buildingH < 48.0F) {
-        buildingH = std::max(32.0F, usableBottom - top - gap - 32.0F);
+    const float noticeH = std::clamp(std::max(40.0F, scale.minTouchTarget()), 40.0F, 56.0F);
+    layout.notice = {margin, 4.0F, std::max(1.0F, width - margin * 2.0F), noticeH};
+    const float exitW = std::min(148.0F, std::max(108.0F, scale.minTouchTarget() * 2.6F));
+    layout.exitButton = {width - margin - exitW, layout.notice.y, exitW, noticeH};
+
+    const float playTop = layout.notice.y + layout.notice.height + 12.0F;
+    const float playBottom = std::max(playTop + 48.0F, consoleTop - 10.0F);
+    const float playH = std::max(48.0F, playBottom - playTop);
+
+    const float ctaW = std::clamp(width * 0.15F, std::max(112.0F, scale.minTouchTarget() * 2.3F), 188.0F);
+    const float ctaH = std::clamp(playH * 0.46F, std::max(128.0F, ctaW * 0.9F), std::min(250.0F, playH * 0.72F));
+    layout.road = {
+        width - margin - ctaW,
+        playTop + std::max(0.0F, (playH - ctaH) * 0.38F),
+        ctaW,
+        ctaH};
+    if (layout.road.y + layout.road.height > playBottom) {
+        layout.road.y = std::max(playTop, playBottom - layout.road.height);
     }
 
-    const float buildingY = top;
-    layout.blacksmith = {margin, buildingY, buildingW, buildingH};
-    layout.healer = {margin + buildingW + gap, buildingY, buildingW, buildingH};
-    layout.tavern = {margin + (buildingW + gap) * 2.0F, buildingY, buildingW, buildingH};
+    const float left = margin;
+    const float rightLimit = layout.road.x - 14.0F;
+    const float innerW = std::max(48.0F, rightLimit - left);
+    const bool wide = width >= 960.0F;
+    if (wide) {
+        const float forgeW = std::min(320.0F, innerW * 0.32F);
+        const float forgeH = std::min(playH * 0.58F, 390.0F);
+        layout.blacksmith = {left, playTop + playH * 0.34F, forgeW, forgeH};
 
-    const float roadW = std::min(width - margin * 2.0F, std::max(buildingW, scale.minTouchTarget() * 3.0F));
-    layout.road = {(width - roadW) * 0.5F, buildingY + buildingH + gap, roadW, roadH};
-    layout.notice = {margin, 6.0F, std::max(1.0F, width - margin * 2.0F), std::max(16.0F, top - 12.0F)};
+        const float chapelW = std::min(280.0F, innerW * 0.28F);
+        const float chapelH = std::min(playH * 0.52F, 360.0F);
+        layout.healer = {left + (innerW - chapelW) * 0.48F, playTop + playH * 0.02F, chapelW, chapelH};
+
+        const float tavernW = std::min(280.0F, innerW * 0.28F);
+        const float tavernH = std::min(playH * 0.52F, 350.0F);
+        layout.tavern = {rightLimit - tavernW, playTop + playH * 0.28F, tavernW, tavernH};
+    } else {
+        const float chapelW = std::min(innerW * 0.72F, 260.0F);
+        const float chapelH = std::min(playH * 0.34F, 240.0F);
+        layout.healer = {left + std::max(0.0F, (innerW - chapelW) * 0.5F), playTop, chapelW, chapelH};
+        const float rowY = layout.healer.y + layout.healer.height + 12.0F;
+        const float rowH = std::max(64.0F, std::min(playH * 0.38F, playBottom - rowY));
+        const float colGap = 10.0F;
+        const float colW = std::max(44.0F, (innerW - colGap) * 0.5F);
+        layout.blacksmith = {left, rowY, colW, rowH};
+        layout.tavern = {left + colW + colGap, rowY, std::max(44.0F, std::min(colW, rightLimit - (left + colGap + colW))), rowH};
+    }
+
+    const auto clampPlay = [&](Rect& box) {
+        if (box.x < left) {
+            box.x = left;
+        }
+        if (box.x + box.width > rightLimit) {
+            box.width = std::max(36.0F, rightLimit - box.x);
+        }
+        if (box.y < playTop) {
+            box.y = playTop;
+        }
+        if (box.y + box.height > playBottom) {
+            box.y = std::max(playTop, playBottom - box.height);
+            if (box.y + box.height > playBottom) {
+                box.height = std::max(32.0F, playBottom - box.y);
+            }
+        }
+    };
+    clampPlay(layout.blacksmith);
+    clampPlay(layout.healer);
+    clampPlay(layout.tavern);
+
+    const auto nudge = [&](Rect& mover, const Rect& anchor) {
+        if (!rectsOverlap(mover, anchor)) {
+            return;
+        }
+        const float overlapX =
+            std::min(mover.x + mover.width, anchor.x + anchor.width) - std::max(mover.x, anchor.x);
+        const float overlapY =
+            std::min(mover.y + mover.height, anchor.y + anchor.height) - std::max(mover.y, anchor.y);
+        if (overlapX < overlapY) {
+            if (mover.x + mover.width * 0.5F >= anchor.x + anchor.width * 0.5F) {
+                mover.x += overlapX + 8.0F;
+            } else {
+                mover.x -= overlapX + 8.0F;
+            }
+        } else if (mover.y >= anchor.y) {
+            mover.y += overlapY + 8.0F;
+        } else {
+            mover.y -= overlapY + 8.0F;
+        }
+        clampPlay(mover);
+    };
+    nudge(layout.healer, layout.blacksmith);
+    nudge(layout.tavern, layout.healer);
+    nudge(layout.tavern, layout.blacksmith);
+    nudge(layout.blacksmith, layout.healer);
 
     const float panelW = std::min(460.0F, std::max(160.0F, width - margin * 2.0F));
     const float panelH = std::min(260.0F, std::max(140.0F, height * 0.4F));
@@ -837,20 +913,20 @@ TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept {
         layout.servicePanel.y + 10.0F,
         std::max(1.0F, layout.servicePanel.width - inset * 2.0F),
         26.0F};
-    const float buttonGap = 10.0F;
-    const float innerW = std::max(1.0F, layout.servicePanel.width - inset * 2.0F);
+    const float serviceInnerW = std::max(1.0F, layout.servicePanel.width - inset * 2.0F);
     const float buttonH = std::min(std::max(36.0F, scale.minTouchTarget()), layout.servicePanel.height * 0.34F);
-    const float actionW = std::max(48.0F, (innerW - buttonGap) * 0.62F);
-    const float closeW = std::max(36.0F, innerW - buttonGap - actionW);
+    const float dismissW = std::min(128.0F, std::max(72.0F, serviceInnerW * 0.38F));
+    const float dismissH = std::max(36.0F, std::min(scale.minTouchTarget(), layout.servicePanel.height * 0.28F));
+    layout.serviceClose = {
+        layout.servicePanel.x + layout.servicePanel.width - inset - dismissW,
+        layout.servicePanel.y + 8.0F,
+        dismissW,
+        dismissH};
+    layout.serviceTitle.width = std::max(40.0F, layout.serviceClose.x - 8.0F - layout.serviceTitle.x);
     layout.serviceAction = {
         layout.servicePanel.x + inset,
         layout.servicePanel.y + layout.servicePanel.height - buttonH - 12.0F,
-        std::min(actionW, innerW),
-        buttonH};
-    layout.serviceClose = {
-        layout.serviceAction.x + layout.serviceAction.width + buttonGap,
-        layout.serviceAction.y,
-        closeW,
+        serviceInnerW,
         buttonH};
     if (layout.serviceClose.x + layout.serviceClose.width > layout.servicePanel.x + layout.servicePanel.width - inset) {
         layout.serviceClose.width =
@@ -865,7 +941,7 @@ TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept {
 }
 
 Rect townBuildingArtRect(const Rect& hotspot) noexcept {
-    float captionH = std::clamp(hotspot.height * 0.18F, 44.0F, 72.0F);
+    float captionH = std::clamp(hotspot.height * 0.2F, 54.0F, 72.0F);
     const float cap = hotspot.height * 0.42F;
     if (captionH > cap) {
         captionH = cap;
@@ -875,9 +951,40 @@ Rect townBuildingArtRect(const Rect& hotspot) noexcept {
 
 Rect townBuildingCaptionRect(const Rect& hotspot) noexcept {
     const Rect art = townBuildingArtRect(hotspot);
-    const float width = std::min(std::max(48.0F, hotspot.width - 28.0F), 320.0F);
+    const float width = std::min(std::max(48.0F, hotspot.width - 8.0F), 280.0F);
     const float height = std::max(24.0F, hotspot.y + hotspot.height - (art.y + art.height) - 6.0F);
     return {hotspot.x + (hotspot.width - width) * 0.5F, art.y + art.height + 4.0F, width, height};
+}
+
+Rect townOpaqueSpriteRect(
+    const Rect& art,
+    const float textureWidth,
+    const float textureHeight,
+    const float u0,
+    const float v0,
+    const float u1,
+    const float v1) noexcept {
+    const float spanU = std::clamp(u1, u0 + 0.01F, 1.0F) - std::clamp(u0, 0.0F, 1.0F);
+    const float spanV = std::clamp(v1, v0 + 0.01F, 1.0F) - std::clamp(v0, 0.0F, 1.0F);
+    const float pixelW = std::max(1.0F, spanU * std::max(textureWidth, 1.0F));
+    const float pixelH = std::max(1.0F, spanV * std::max(textureHeight, 1.0F));
+    const float aspect = pixelW / pixelH;
+    float drawW = std::max(1.0F, art.width);
+    float drawH = std::max(1.0F, art.height);
+    if (art.width > 1.0F && art.height > 1.0F) {
+        if ((art.width / art.height) > aspect) {
+            drawH = art.height;
+            drawW = std::min(art.width, drawH * aspect);
+        } else {
+            drawW = art.width;
+            drawH = std::min(art.height, drawW / std::max(aspect, 0.01F));
+        }
+    }
+    return {
+        art.x + (art.width - drawW) * 0.5F,
+        art.y + art.height - drawH,
+        std::max(1.0F, drawW),
+        std::max(1.0F, drawH)};
 }
 
 int townHotspotIndexAt(const TownSceneLayout& layout, const float x, const float y) noexcept {

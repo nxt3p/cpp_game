@@ -116,6 +116,7 @@ void buildInGameHitRegions(
                 trade.serviceButtonRect(serviceIndex),
                 serviceIndex);
         }
+        registry.push(WidgetKind::PanelClose, computeTownSceneLayout(scale).exitButton);
     }
 }
 

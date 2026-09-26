@@ -6,6 +6,7 @@
 #include "systems/LootEngine.hpp"
 #include "systems/SlotMachineLoot.hpp"
 #include "systems/TownHub.hpp"
+#include "ui/HudConsoleLayout.hpp"
 #include "ui/UiHitTest.hpp"
 #include "ui/UiLayout.hpp"
 #include "ui/UiScale.hpp"
@@ -178,6 +179,17 @@ TEST_CASE("Town hotspots and inventory slots do not overlap", "[town][ui]") {
     CHECK_FALSE(ui::rectsOverlap(town.road, town.healer));
     CHECK_FALSE(ui::rectsOverlap(town.road, town.tavern));
     CHECK(town.blacksmith.width >= 48.0F);
+    CHECK(town.blacksmith.x + town.blacksmith.width < town.healer.x);
+    CHECK(town.healer.y + 4.0F < town.blacksmith.y);
+    CHECK(town.tavern.x > town.healer.x + town.healer.width - 1.0F);
+    CHECK(town.road.x > town.tavern.x);
+    CHECK(town.road.x + town.road.width > static_cast<float>(desktop.width) * 0.8F);
+    const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(desktop);
+    for (const ui::Rect& hotspot : {town.blacksmith, town.healer, town.tavern, town.road}) {
+        CHECK(hotspot.y + hotspot.height <= console.panel.y + 0.5F);
+    }
+    CHECK(town.exitButton.x + town.exitButton.width <= static_cast<float>(desktop.width));
+    CHECK(town.exitButton.y + town.exitButton.height <= town.road.y + 0.5F);
     CHECK(town.servicePanel.contains(
         town.serviceAction.x + town.serviceAction.width * 0.5F,
         town.serviceAction.y + town.serviceAction.height * 0.5F));
@@ -194,6 +206,10 @@ TEST_CASE("Town hotspots and inventory slots do not overlap", "[town][ui]") {
     CHECK_FALSE(ui::rectsOverlap(phoneTown.road, phoneTown.healer));
     CHECK(phoneTown.blacksmith.width >= 44.0F);
     CHECK(phoneTown.road.height >= 36.0F);
+    CHECK(phoneTown.road.x > phoneTown.tavern.x);
+    const ui::HudConsoleLayout phoneConsole = ui::computeHudConsoleLayout(mobile);
+    CHECK(phoneTown.blacksmith.y + phoneTown.blacksmith.height <= phoneConsole.panel.y + 0.5F);
+    CHECK(phoneTown.road.y + phoneTown.road.height <= phoneConsole.panel.y + 0.5F);
 
     const ui::UiScale browser(1280, 720, ui::UiPlatformKind::Browser);
     CHECK(browser.platform == ui::UiPlatformKind::Browser);
@@ -253,7 +269,7 @@ TEST_CASE("Town scene loads committed plates instead of a missing folder", "[tow
         "chapel_repaired.png",
         "tavern_ruined.png",
         "tavern_repaired.png",
-        "road.png"};
+        "adventure.png"};
     for (const char* file : files) {
         const std::filesystem::path path = root / "textures" / "town" / file;
         INFO(path.string());
@@ -279,6 +295,13 @@ TEST_CASE("Town captions sit under the building art", "[town][ui]") {
     CHECK(ui::townHotspotIndexAt(town, town.healer.x + 8.0F, town.healer.y + town.healer.height * 0.5F) == 2);
     CHECK(ui::townHotspotIndexAt(town, town.road.x + town.road.width * 0.5F, town.road.y + town.road.height * 0.5F) == 3);
     CHECK(ui::townHotspotIndexAt(town, 2.0F, 2.0F) == -1);
+
+    const ui::Rect art = ui::townBuildingArtRect(town.healer);
+    const ui::Rect tight = ui::townOpaqueSpriteRect(art, 768.0F, 1024.0F, 0.25F, 0.2F, 0.7F, 0.85F);
+    CHECK(art.contains(tight.x + tight.width * 0.5F, tight.y + tight.height * 0.5F));
+    CHECK(tight.width < art.width);
+    CHECK(tight.y + tight.height == Catch::Approx(art.y + art.height).margin(0.6F));
+    CHECK_FALSE(tight.contains(art.x + 1.0F, art.y + 1.0F));
 }
 
 extern "C" {
@@ -295,7 +318,7 @@ TEST_CASE("Town plates keep a transparent margin around the sprite", "[town]") {
         "chapel_repaired.png",
         "tavern_ruined.png",
         "tavern_repaired.png",
-        "road.png"};
+        "adventure.png"};
     for (const char* file : plates) {
         const std::filesystem::path path = root / "textures" / "town" / file;
         int width = 0;

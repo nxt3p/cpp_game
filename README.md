@@ -148,9 +148,9 @@ Buildings start in ruins. Click one to spend gold once your level is high enough
 | Chapel | 2 | 64 | Rest (12 gold tithe restores health and mana) |
 | Tavern | 3 | 120 | Mystery gamble, 25 gold a spin |
 
-Kills pay gold and experience directly, so the first repairs come from fighting rather than from a pile of items. **The Road** (or **M**) opens the campaign map. The circular minimap stays hidden on this scene and returns on the road and in combat. Mythical items are reserved for the tavern reel at 1/10000.
+Kills pay gold and experience directly, so the first repairs come from fighting rather than from a pile of items. **Start Adventure** (the crossed swords on the right, or **M**) opens the campaign map. The circular minimap stays hidden on this scene and returns on the road and in combat. Mythical items are reserved for the tavern reel at 1/10000.
 
-Town pictures live in `assets/textures/town/` (`backdrop.png`, ruined and repaired forge/chapel/tavern plates, `road.png`). The game loads those files and blends them with alpha, so the plates need a real transparent background. On the RTX 5080, regenerate them with the same SDXL LoRAs as the item atlases. The script punches the flat sky and gray mats after generation:
+The town is a backdrop plus separate sprites. `backdrop.png` is the full-screen dusk ground and sky, with no buildings baked in. Forge, chapel, and tavern each have a ruined and a repaired PNG with a real alpha channel. The engine fits the opaque pixels into a plaza (forge left, chapel upper center, tavern right) and keeps that art above the HUD. `adventure.png` is the crossed-swords icon. Hover strokes follow the opaque sprite, not the empty canvas. On the RTX 5080, regenerate them with the same SDXL LoRAs as the item atlases. The script punches flat sky and gray mats after generation:
 
 ```bash
 cd /home/dev/projects/cppGame
@@ -166,7 +166,7 @@ Flux, after accepting the license and `huggingface-cli login`:
 python scripts/generate_town_sd.py --backend flux --cpu-offload
 ```
 
-`python scripts/generate_town_sd.py --dry-run` prints prompts without a GPU. `--placeholders` rewrites the committed pixel-art stand-ins (Pillow only) if the PNGs are missing. `--cutouts` re-runs only the alpha step on the PNGs already in `assets/textures/town` (Pillow, no GPU):
+`python scripts/generate_town_sd.py --dry-run` prints prompts without a GPU. `--placeholders` rewrites the committed pixel-art stand-ins with Pillow and does not need CUDA. `--cutouts` re-runs only the alpha step on the PNGs already in `assets/textures/town` (Pillow, no GPU):
 
 ```bash
 python scripts/generate_town_sd.py --cutouts
