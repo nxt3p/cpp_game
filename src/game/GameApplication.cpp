@@ -2747,7 +2747,7 @@ struct GameApplication::Impl {
 
     void drawTooltipBackground(const ui::TooltipBoxLayout& layout, const float* borderColor = nullptr) const {
         const ui::Rect& box = layout.box;
-        const float parchment[4] = {0.05F, 0.04F, 0.035F, 0.96F};
+        const float parchment[4] = {0.05F, 0.04F, 0.035F, 1.0F};
         const float gold[4] = {0.72F, 0.56F, 0.24F, 1.0F};
         const float* border = borderColor != nullptr ? borderColor : gold;
         const float ink[4] = {border[0] * 0.45F, border[1] * 0.45F, border[2] * 0.45F, 0.9F};
@@ -5993,12 +5993,13 @@ struct GameApplication::Impl {
             return false;
         }
 
+        const ui::UiScale scale = currentUiScale();
         const float textScale = floatingTextScale(floating);
         const float textWidth = textRenderer.measureTextWidth(floating.text.c_str(), textScale);
-        const float textHeight = 16.0F * (textScale / 1.35F);
-        const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(currentUiScale());
-        const float ceiling = 40.0F;
-        const float floor = console.messageStrip.y - textHeight - 6.0F;
+        const float textHeight = scale.dim(16.0F) * (textScale / 1.35F);
+        const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(scale);
+        const float ceiling = scale.dim(40.0F);
+        const float floor = console.messageStrip.y - textHeight - scale.dim(6.0F);
 
         const MobScreenPlate* nearest = nullptr;
         float nearestDistance = 140.0F;
@@ -6285,7 +6286,7 @@ struct GameApplication::Impl {
             std::max(currentUiScale().dim(16.0F), layout.titleBandHeight - currentUiScale().dim(8.0F)),
             titleFill);
 
-        const float sidebarFill[4] = {0.08F, 0.06F, 0.045F, 0.72F};
+        const float sidebarFill[4] = {0.08F, 0.06F, 0.045F, 0.94F};
         uiRenderer.drawFilledRect(
             layout.statsSidebar.x,
             layout.statsSidebar.y,
@@ -6423,7 +6424,7 @@ struct GameApplication::Impl {
 
         const float goldColor[4] = {0.95F, 0.82F, 0.28F, 1.0F};
         std::ostringstream goldLine;
-        goldLine << ui::formatGroupedNumber(tradeSystem.playerGold());
+        goldLine << "Gold " << ui::formatGroupedNumber(tradeSystem.playerGold());
         drawBoundedText(layout.goldLabel, goldLine.str(), layoutScale.dim(1.35F), goldColor);
 
         const std::vector<std::string> statLines = buildCharacterStatLines(true);
@@ -6445,19 +6446,13 @@ struct GameApplication::Impl {
             statY += statLineHeight;
         }
 
-        const ui::Rect bagGold{
+        const ui::Rect bagCount{
             layout.bagHeader.x,
             layout.bagHeader.y,
-            layout.bagHeader.width * 0.62F,
+            layout.bagHeader.width,
             layout.bagHeader.height};
-        const ui::Rect bagCount{
-            layout.bagHeader.x + layout.bagHeader.width * 0.62F,
-            layout.bagHeader.y,
-            layout.bagHeader.width * 0.38F,
-            layout.bagHeader.height};
-        drawBoundedText(bagGold, ui::formatGroupedNumber(tradeSystem.playerGold()), layoutScale.dim(1.35F), goldColor);
         std::ostringstream bagTitle;
-        bagTitle << playerInventory.usedSlots() << "/" << playerInventory.capacity();
+        bagTitle << "Bag " << playerInventory.usedSlots() << "/" << playerInventory.capacity();
         drawBoundedText(bagCount, bagTitle.str(), layoutScale.dim(1.35F), subtitleColor);
 
         for (int equipmentIndex = 0;
@@ -6681,6 +6676,10 @@ struct GameApplication::Impl {
         }
 
         constexpr float kTooltipScale = 1.7F;
+        const bool inventoryOpen = overlayState.inventoryOverlay().visible;
+        const ui::InventoryPaperDollLayout inventoryLayout =
+            inventoryOpen ? buildInventoryPaperDollLayout() : ui::InventoryPaperDollLayout{};
+        const ui::Rect* avoidSidebar = inventoryOpen ? &inventoryLayout.statsSidebar : nullptr;
         const ui::ItemCompareCards placed = ui::placeItemCompareCards(
             currentUiScale(),
             anchorX,
@@ -6690,7 +6689,9 @@ struct GameApplication::Impl {
             kTooltipScale,
             textMeasureFn(),
             window.width(),
-            window.height());
+            window.height(),
+            inventoryOpen,
+            avoidSidebar);
 
         cachedItemCard_ = CachedItemCard{placed.candidate, std::move(candidate.lines), kTooltipScale, hoveredItem->rarity};
         drawItemCardBackground(*cachedItemCard_);
@@ -7488,6 +7489,30 @@ struct GameApplication::Impl {
         }
     }
 
+    [[nodiscard]] static float lootLabelLineHeight(const ui::UiScale& scale) noexcept {
+        return scale.dim(16.0F);
+    }
+
+    [[nodiscard]] static float lootLabelTextScale(const ui::UiScale& scale, const float intensity) noexcept {
+        return scale.dim(intensity >= 1.6F ? 1.55F : 1.35F);
+    }
+
+    [[nodiscard]] float lootLabelStackTop(
+        const float screenY,
+        const float beamHeightPx,
+        const std::size_t labelCount,
+        const ui::UiScale& scale) const {
+        const float lineHeight = lootLabelLineHeight(scale);
+        float cursorY =
+            screenY - beamHeightPx - lineHeight * static_cast<float>(labelCount) - scale.dim(4.0F);
+        // Keep plates readable above the HUD chrome / top strip instead of clamping into them.
+        const float ceiling = scale.dim(40.0F);
+        const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(scale);
+        const float floor = console.messageStrip.y - lineHeight * static_cast<float>(std::max<std::size_t>(labelCount, 1)) -
+            scale.dim(6.0F);
+        return std::clamp(cursorY, ceiling, std::max(ceiling, floor));
+    }
+
     void renderLootBeacons() const {
         if (lootPresentation_.beacons().empty() || worldReadoutsHidden()) {
             return;
@@ -7535,10 +7560,9 @@ struct GameApplication::Impl {
             const float glow[4] = {top.red, top.green, top.blue, fade * 0.55F};
             uiRenderer.drawFilledRect(screenX - glowWidth * 0.5F, screenY - scale.dim(4.0F), glowWidth, scale.dim(10.0F), glow);
 
-            const float lineHeight = scale.dim(16.0F);
-            const float textScale = scale.dim(beacon.intensity >= 1.6F ? 1.55F : 1.35F);
-            float cursorY = screenY - height - lineHeight * static_cast<float>(beacon.labels.size()) - scale.dim(4.0F);
-            cursorY = std::max(cursorY, scale.dim(8.0F));
+            const float lineHeight = lootLabelLineHeight(scale);
+            const float textScale = lootLabelTextScale(scale, beacon.intensity);
+            float cursorY = lootLabelStackTop(screenY, height, beacon.labels.size(), scale);
             for (const ui::LootLabel& label : beacon.labels) {
                 const float width = std::max(scale.dim(24.0F), textRenderer.measureTextWidth(label.name.c_str(), textScale));
                 const float plate[4] = {0.0F, 0.0F, 0.0F, fade * 0.62F};
@@ -7555,7 +7579,7 @@ struct GameApplication::Impl {
 
         const gameplay::CameraMatrices cameraMatrices = camera.matricesForTarget(cameraFocus());
         const ui::UiScale scale = currentUiScale();
-        const float lineHeight = scale.dim(15.0F);
+        const float lineHeight = lootLabelLineHeight(scale);
         for (const ui::LootBeacon& beacon : lootPresentation_.beacons()) {
             float screenX = 0.0F;
             float screenY = 0.0F;
@@ -7573,9 +7597,8 @@ struct GameApplication::Impl {
 
             const float fade = std::clamp(1.0F - beacon.ageSeconds / beacon.lifetimeSeconds, 0.0F, 1.0F);
             const float height = scale.dim(ui::LootPresentation::beamHeight(beacon.intensity));
-            const float textScale = scale.dim(beacon.intensity >= 1.6F ? 1.55F : 1.3F);
-            float cursorY = screenY - height - lineHeight * static_cast<float>(beacon.labels.size());
-            cursorY = std::max(cursorY, scale.dim(8.0F));
+            const float textScale = lootLabelTextScale(scale, beacon.intensity);
+            float cursorY = lootLabelStackTop(screenY, height, beacon.labels.size(), scale);
             for (const ui::LootLabel& label : beacon.labels) {
                 const float width = textRenderer.measureTextWidth(label.name.c_str(), textScale);
                 const float x = screenX - width * 0.5F;

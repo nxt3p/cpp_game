@@ -552,6 +552,31 @@ SettingsPanelLayout computeSettingsPanelLayout(const UiScale& scale) noexcept {
     return layout;
 }
 
+namespace {
+
+[[nodiscard]] bool rectsOverlap(const Rect& a, const Rect& b) noexcept {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+void nudgeAwayFrom(Rect& box, const Rect& avoid, const float gap, const float margin, const int screenWidth) noexcept {
+    if (!rectsOverlap(box, avoid)) {
+        return;
+    }
+    const float left = avoid.x - box.width - gap;
+    const float right = avoid.x + avoid.width + gap;
+    if (left >= margin) {
+        box.x = left;
+        return;
+    }
+    if (right + box.width <= static_cast<float>(screenWidth) - margin) {
+        box.x = right;
+        return;
+    }
+    box.x = std::clamp(box.x, margin, std::max(margin, static_cast<float>(screenWidth) - margin - box.width));
+}
+
+} // namespace
+
 TooltipBoxLayout computeTooltipBoxLayout(
     const UiScale& scale,
     const float anchorX,
@@ -560,7 +585,9 @@ TooltipBoxLayout computeTooltipBoxLayout(
     const float textScale,
     const TextWidthMeasureFn& measureWidth,
     const int screenWidth,
-    const int screenHeight) noexcept {
+    const int screenHeight,
+    const bool preferLeft,
+    const Rect* avoid) noexcept {
     TooltipBoxLayout layout{};
     if (lines.empty()) {
         return layout;
@@ -589,12 +616,18 @@ TooltipBoxLayout computeTooltipBoxLayout(
     const float boxW = innerWidth + layout.contentInsetX * 2.0F;
     const float boxH = innerHeight + layout.contentInsetY * 2.0F;
 
-    float boxX = anchorX + scale.dim(12.0F);
-    float boxY = anchorY;
     const float screenMargin = scale.dim(8.0F);
+    float boxX = preferLeft ? anchorX - boxW - scale.dim(12.0F) : anchorX + scale.dim(12.0F);
+    float boxY = anchorY;
 
+    if (boxX < screenMargin) {
+        boxX = preferLeft ? anchorX + scale.dim(12.0F) : screenMargin;
+    }
     if (boxX + boxW > static_cast<float>(screenWidth) - screenMargin) {
         boxX = anchorX - boxW - scale.dim(12.0F);
+    }
+    if (boxX < screenMargin) {
+        boxX = screenMargin;
     }
     if (boxY + boxH > static_cast<float>(screenHeight) - screenMargin) {
         boxY = anchorY - boxH;
@@ -604,6 +637,15 @@ TooltipBoxLayout computeTooltipBoxLayout(
     }
 
     layout.box = {boxX, boxY, boxW, boxH};
+    if (avoid != nullptr) {
+        nudgeAwayFrom(layout.box, *avoid, scale.dim(10.0F), screenMargin, screenWidth);
+        if (layout.box.y + layout.box.height > static_cast<float>(screenHeight) - screenMargin) {
+            layout.box.y = static_cast<float>(screenHeight) - screenMargin - layout.box.height;
+        }
+        if (layout.box.y < screenMargin) {
+            layout.box.y = screenMargin;
+        }
+    }
     return layout;
 }
 
@@ -616,17 +658,19 @@ ItemCompareCards placeItemCompareCards(
     const float textScale,
     const TextWidthMeasureFn& measureWidth,
     const int screenWidth,
-    const int screenHeight) noexcept {
+    const int screenHeight,
+    const bool preferLeft,
+    const Rect* avoid) noexcept {
     ItemCompareCards cards{};
     cards.candidate = computeTooltipBoxLayout(
-        scale, anchorX, anchorY, candidateLines, textScale, measureWidth, screenWidth, screenHeight);
+        scale, anchorX, anchorY, candidateLines, textScale, measureWidth, screenWidth, screenHeight, preferLeft, avoid);
     if (equippedLines.empty()) {
         return cards;
     }
 
     cards.showEquipped = true;
     cards.equipped = computeTooltipBoxLayout(
-        scale, anchorX, anchorY, equippedLines, textScale, measureWidth, screenWidth, screenHeight);
+        scale, anchorX, anchorY, equippedLines, textScale, measureWidth, screenWidth, screenHeight, preferLeft, avoid);
     const float gap = scale.dim(10.0F);
     const float margin = scale.dim(8.0F);
     cards.equipped.box.x = cards.candidate.box.x - cards.equipped.box.width - gap;

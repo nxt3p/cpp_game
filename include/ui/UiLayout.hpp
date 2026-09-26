@@ -205,7 +205,9 @@ struct ItemCompareCards {
     float textScale,
     const TextWidthMeasureFn& measureWidth,
     int screenWidth,
-    int screenHeight) noexcept;
+    int screenHeight,
+    bool preferLeft = false,
+    const Rect* avoid = nullptr) noexcept;
 
 [[nodiscard]] TooltipBoxLayout computeTooltipBoxLayout(
     const UiScale& scale,
@@ -215,6 +217,8 @@ struct ItemCompareCards {
     float textScale,
     const TextWidthMeasureFn& measureWidth,
     int screenWidth,
-    int screenHeight) noexcept;
+    int screenHeight,
+    bool preferLeft = false,
+    const Rect* avoid = nullptr) noexcept;
 
 } // namespace ui

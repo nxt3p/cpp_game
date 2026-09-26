@@ -280,3 +280,28 @@ TEST_CASE("Minimap radar is isotropic around the player", "[ui][minimap]") {
     CHECK(offsetX == Catch::Approx(offsetY).margin(1e-2F));
     CHECK(offsetX > 0.0F);
 }
+
+
+TEST_CASE("Item tooltips prefer left and avoid inventory sidebar", "[ui][tooltip]") {
+    const ui::UiScale scale(1280, 720);
+    const std::vector<std::string> lines = {"Socketed Swift Leggings", "Rare Armor", "+12 Vitality"};
+    const ui::Rect sidebar{900.0F, 80.0F, 180.0F, 420.0F};
+    const ui::TooltipBoxLayout left = ui::computeTooltipBoxLayout(
+        scale, 860.0F, 200.0F, lines, 1.7F, ui::TextWidthMeasureFn{}, 1280, 720, true, &sidebar);
+    CHECK(left.box.x + left.box.width <= sidebar.x + 1.0F);
+    CHECK(left.box.x >= 0.0F);
+
+    const ui::ItemCompareCards cards = ui::placeItemCompareCards(
+        scale,
+        860.0F,
+        200.0F,
+        lines,
+        {"Equipped Pants", "Common Armor"},
+        1.7F,
+        ui::TextWidthMeasureFn{},
+        1280,
+        720,
+        true,
+        &sidebar);
+    CHECK(cards.candidate.box.x + cards.candidate.box.width <= sidebar.x + 1.0F);
+}

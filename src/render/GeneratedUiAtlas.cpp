@@ -44,12 +44,19 @@ UiFrameUv GeneratedUiAtlas::uvFor(const std::string& frameName) const noexcept {
         return uv;
     }
 
-    uv.u0 = static_cast<float>(frame->x) / width;
-    uv.u1 = static_cast<float>(frame->x + frame->width) / width;
+    // Inset by half a texel so adjacent atlas frames do not bleed when the UI
+    // quad is scaled (NEAREST still samples near edges under fractional verts).
+    const float insetU = 0.5F / width;
+    const float insetV = 0.5F / height;
+    uv.u0 = static_cast<float>(frame->x) / width + insetU;
+    uv.u1 = static_cast<float>(frame->x + frame->width) / width - insetU;
     // Image top is V = 1 after the vertical flip in Texture::loadFromFile.
     // UiRenderer treats v1 as the top of the screen quad and v0 as the bottom.
-    uv.v1 = 1.0F - static_cast<float>(frame->y) / height;
-    uv.v0 = 1.0F - static_cast<float>(frame->y + frame->height) / height;
+    uv.v1 = 1.0F - static_cast<float>(frame->y) / height - insetV;
+    uv.v0 = 1.0F - static_cast<float>(frame->y + frame->height) / height + insetV;
+    if (uv.u1 <= uv.u0 || uv.v1 <= uv.v0) {
+        return UiFrameUv{};
+    }
     uv.valid = true;
     return uv;
 }
