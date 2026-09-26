@@ -1,14 +1,12 @@
 #include "ui/UiLayout.hpp"
 
+#include "ui/HudConsoleLayout.hpp"
+
 #include <algorithm>
 
 namespace ui {
 
 namespace {
-
-constexpr float kReferenceHudPortrait = 72.0F;
-constexpr float kReferenceHudBarWidth = 220.0F;
-constexpr float kReferenceHudBarHeight = 18.0F;
 
 Rect anchorRect(
     const UiScale& scale,
@@ -33,15 +31,17 @@ Rect anchorRect(
         break;
     case ScreenAnchor::TopLeft:
         rect.x = scaledMarginX;
-        rect.y = scale.y(92.0F) + scaledMarginY;
+        rect.y = scaledMarginY;
         break;
     case ScreenAnchor::BottomRight:
         rect.x = static_cast<float>(scale.width) - scaledMarginX - scaledWidth;
-        rect.y = static_cast<float>(scale.height) - scaledMarginY - scaledHeight;
+        rect.y = static_cast<float>(scale.height) - scale.dim(kReferenceHudConsoleHeight) - scaledMarginY -
+                 scaledHeight;
         break;
     case ScreenAnchor::BottomLeft:
         rect.x = scaledMarginX;
-        rect.y = static_cast<float>(scale.height) - scaledMarginY - scaledHeight;
+        rect.y = static_cast<float>(scale.height) - scale.dim(kReferenceHudConsoleHeight) - scaledMarginY -
+                 scaledHeight;
         break;
     }
 
@@ -139,30 +139,54 @@ InventoryPaperDollLayout computeInventoryPaperDollLayout(
     InventoryPaperDollLayout layout{};
     layout.bagColumns = bagColumns;
     layout.bagRows = bagRows;
-    layout.slotSize = scale.dim(50.0F);
-    layout.slotGap = scale.dim(6.0F);
-    layout.padding = scale.dim(14.0F);
-    layout.titleBandHeight = scale.dim(34.0F);
-    layout.dollBandHeight = scale.dim(352.0F);
-    layout.bagSeparatorHeight = scale.dim(26.0F);
+    layout.padding = scale.dim(12.0F);
+    layout.titleBandHeight = scale.dim(30.0F);
+    layout.bagSeparatorHeight = scale.dim(22.0F);
     layout.statsSidebarWidth = scale.dim(168.0F);
+
+    constexpr int kDollRows = 6;
+    const float topLimit = scale.dim(48.0F);
+    const float bottomLimit =
+        static_cast<float>(scale.height) - scale.dim(kReferenceHudConsoleHeight) - scale.dim(8.0F);
+    const float maxPanelHeight = std::max(bottomLimit - topLimit, scale.dim(280.0F));
+    const float dollPad = scale.dim(4.0F);
+    const float fixedChrome =
+        layout.padding * 2.0F + layout.titleBandHeight + layout.bagSeparatorHeight + dollPad;
+    const float slotRows = static_cast<float>(kDollRows + std::max(bagRows, 1));
+    const float gapRows = static_cast<float>(std::max(kDollRows - 1, 0) + std::max(bagRows - 1, 0));
+    constexpr float kGapPerSlot = 6.0F / 50.0F;
+    const float perSlot = slotRows + gapRows * kGapPerSlot;
+    const float fittedSlot = (maxPanelHeight - fixedChrome) / std::max(perSlot, 1.0F);
+    layout.slotSize = std::clamp(fittedSlot, scale.dim(28.0F), scale.dim(50.0F));
+    layout.slotGap = layout.slotSize * kGapPerSlot;
+    layout.dollBandHeight =
+        static_cast<float>(kDollRows) * layout.slotSize +
+        static_cast<float>(kDollRows - 1) * layout.slotGap + dollPad;
 
     const float dollGridWidth = layout.slotSize * 3.0F + layout.slotGap * 2.0F;
     const float bagWidth =
-        static_cast<float>(bagColumns) * layout.slotSize + layout.slotGap * static_cast<float>(bagColumns - 1);
+        static_cast<float>(bagColumns) * layout.slotSize + layout.slotGap * static_cast<float>(std::max(bagColumns - 1, 0));
     const float dollAreaWidth = std::max(dollGridWidth, bagWidth);
     const float panelContentWidth = dollAreaWidth + layout.statsSidebarWidth + layout.padding;
     const float panelWidth = panelContentWidth + layout.padding * 2.0F;
     const float bagHeight =
-        static_cast<float>(bagRows) * layout.slotSize + layout.slotGap * static_cast<float>(bagRows - 1);
+        static_cast<float>(std::max(bagRows, 0)) * layout.slotSize +
+        layout.slotGap * static_cast<float>(std::max(bagRows - 1, 0));
     const float panelHeight = layout.padding * 2.0F + layout.titleBandHeight + layout.dollBandHeight +
                               layout.bagSeparatorHeight + bagHeight;
+    const float regionHeight = std::max(bottomLimit - topLimit, panelHeight);
+    const float panelY = topLimit + std::max(0.0F, (regionHeight - panelHeight) * 0.5F);
 
-    layout.panel = {
-        static_cast<float>(scale.width) * 0.5F - panelWidth * 0.5F,
-        static_cast<float>(scale.height) * 0.5F - panelHeight * 0.5F,
-        panelWidth,
-        panelHeight};
+    const TradeWindowLayout trade = computeTradeWindowLayout(scale);
+    const float bagLeftInPanel = layout.padding + (dollAreaWidth - bagWidth) * 0.5F;
+    const float firstSlotCenterInPanel = bagLeftInPanel + layout.slotSize * 0.5F;
+    const float tradeRight = trade.playerPanel.x + trade.playerPanel.width;
+    float panelX = static_cast<float>(scale.width) * 0.5F - panelWidth * 0.5F;
+    panelX = std::max(panelX, tradeRight - firstSlotCenterInPanel + scale.dim(6.0F));
+    const float rightLimit = static_cast<float>(scale.width) - panelWidth - scale.dim(8.0F);
+    panelX = std::min(panelX, std::max(rightLimit, 0.0F));
+
+    layout.panel = {panelX, panelY, panelWidth, panelHeight};
 
     layout.dollGridTop = layout.panel.y + layout.padding + layout.titleBandHeight;
     layout.dollGridLeft =
@@ -200,14 +224,14 @@ InventoryPaperDollLayout computeInventoryPaperDollLayout(
         layout.panel.y + layout.padding + layout.titleBandHeight + layout.dollBandHeight;
     layout.bagDivider = {
         layout.panel.x + layout.padding,
-        bagTop,
+        bagTop + layout.bagSeparatorHeight - scale.dim(2.0F),
         dollAreaWidth,
         scale.dim(2.0F)};
     layout.bagHeader = {
         layout.panel.x + layout.padding,
-        bagTop - scale.dim(20.0F),
+        bagTop + scale.dim(2.0F),
         dollAreaWidth,
-        scale.dim(18.0F)};
+        std::max(layout.bagSeparatorHeight - scale.dim(4.0F), scale.dim(12.0F))};
 
     return layout;
 }
@@ -217,9 +241,14 @@ CharacterPanelLayout computeCharacterPanelLayout(const UiScale& scale) noexcept 
     const float panelW = scale.dim(500.0F);
     const float panelH = scale.dim(548.0F);
     const float pad = scale.dim(18.0F);
+    const float topLimit = scale.dim(8.0F);
+    const float bottomLimit =
+        static_cast<float>(scale.height) - scale.dim(kReferenceHudConsoleHeight) - scale.dim(12.0F);
+    const float centeredY = static_cast<float>(scale.height) * 0.5F - panelH * 0.5F;
+    const float panelY = std::clamp(centeredY, topLimit, std::max(topLimit, bottomLimit - panelH));
     layout.panel = {
         static_cast<float>(scale.width) * 0.5F - panelW * 0.5F,
-        static_cast<float>(scale.height) * 0.5F - panelH * 0.5F,
+        panelY,
         panelW,
         panelH};
 
@@ -400,7 +429,7 @@ MinimapWidgetLayout computeMinimapWidgetLayout(
 SettingsPanelLayout computeSettingsPanelLayout(const UiScale& scale) noexcept {
     SettingsPanelLayout layout{};
     constexpr float kRefPanelWidth = 520.0F;
-    constexpr float kRefPanelHeight = 420.0F;
+    constexpr float kRefPanelHeight = 478.0F;
     constexpr float kRefPadding = 36.0F;
     constexpr float kRefRowHeight = 58.0F;
     constexpr float kRefLabelHeight = 22.0F;
@@ -419,7 +448,7 @@ SettingsPanelLayout computeSettingsPanelLayout(const UiScale& scale) noexcept {
 
     layout.panel = {
         static_cast<float>(scale.width) * 0.5F - panelW * 0.5F,
-        scale.y(108.0F),
+        scale.y(48.0F),
         panelW,
         panelH};
     layout.titleY = layout.panel.y + scale.dim(12.0F);
@@ -444,6 +473,7 @@ SettingsPanelLayout computeSettingsPanelLayout(const UiScale& scale) noexcept {
         SettingsRowKind::Slider,
         SettingsRowKind::Cycle,
         SettingsRowKind::Slider,
+        SettingsRowKind::Cycle,
         SettingsRowKind::Cycle,
     };
 
@@ -527,18 +557,11 @@ TooltipBoxLayout computeTooltipBoxLayout(
 }
 
 HudChromeLayout computeHudChromeLayout(const UiScale& scale) noexcept {
+    // The status HUD is the Diablo-style bottom console; the message strip floats above it.
+    const HudConsoleLayout console = computeHudConsoleLayout(scale);
     HudChromeLayout layout{};
-    layout.statusHud = {
-        scale.x(8.0F),
-        scale.y(8.0F),
-        scale.dim(kReferenceHudPortrait + kReferenceHudBarWidth + 28.0F),
-        scale.dim(kReferenceHudPortrait + kReferenceHudBarHeight * 2.0F + 28.0F)};
-
-    layout.messageStrip = {
-        scale.x(12.0F),
-        scale.y(12.0F) + scale.dim(kReferenceHudPortrait + kReferenceHudBarHeight * 2.0F + 12.0F),
-        scale.dim(420.0F),
-        scale.dim(26.0F)};
+    layout.statusHud = console.panel;
+    layout.messageStrip = console.messageStrip;
     return layout;
 }
 

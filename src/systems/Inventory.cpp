@@ -3,6 +3,7 @@
 #include "systems/ItemStats.hpp"
 
 #include <stdexcept>
+#include <utility>
 
 namespace systems {
 
@@ -65,6 +66,14 @@ bool Inventory::discardAt(int index) {
         return false;
     }
     slots_[static_cast<std::size_t>(index)].item.reset();
+    return true;
+}
+
+bool Inventory::exchangeSlots(int fromIndex, int toIndex) {
+    if (!isValidSlot(fromIndex) || !isValidSlot(toIndex) || fromIndex == toIndex) {
+        return false;
+    }
+    std::swap(slots_[static_cast<std::size_t>(fromIndex)].item, slots_[static_cast<std::size_t>(toIndex)].item);
     return true;
 }
 

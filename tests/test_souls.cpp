@@ -20,8 +20,32 @@ TEST_CASE("Soul upgrades only work in town and consume carried souls", "[souls]"
     CHECK(success.soulsSpent == 75);
     CHECK(stats.carriedSouls == 125);
     CHECK(stats.strength == 11);
-    CHECK(stats.level == 2);
+    CHECK(stats.level == 1);
     CHECK(stats.statUpgradesPurchased == 1);
+}
+
+TEST_CASE("Combat experience levels very slowly and grants a small stat bump", "[souls][lane]") {
+    ui::CharacterScreenData stats{};
+    stats.level = 1;
+    stats.experience = 0;
+    stats.strength = 10;
+    stats.dexterity = 10;
+    stats.vitality = 10;
+
+    CHECK(systems::experienceRequiredForLevel(1) == 140);
+    CHECK(systems::experienceRequiredForLevel(2) > systems::experienceRequiredForLevel(1));
+
+    const systems::ExperienceGrant partial = systems::grantCombatExperience(stats, 40);
+    CHECK(partial.levelsGained == 0);
+    CHECK(stats.level == 1);
+    CHECK(stats.experience == 40);
+
+    const systems::ExperienceGrant levelUp = systems::grantCombatExperience(stats, 100);
+    CHECK(levelUp.levelsGained == 1);
+    CHECK(stats.level == 2);
+    CHECK(stats.strength == 11);
+    CHECK(stats.experience == 0);
+    CHECK(stats.experienceToNextLevel == systems::experienceRequiredForLevel(2));
 }
 
 TEST_CASE("Soul upgrade cost escalates with purchases", "[souls]") {

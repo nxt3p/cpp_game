@@ -149,6 +149,36 @@ class CdpSession {
         writeFileSync(path, Buffer.from(result.data, 'base64'));
     }
 
+    async canvasRect() {
+        const result = await this.send('Runtime.evaluate', {
+            expression: `(() => {
+                const canvas = document.getElementById('canvas');
+                canvas.focus();
+                const rect = canvas.getBoundingClientRect();
+                return { x: rect.x, y: rect.y, w: rect.width, h: rect.height };
+            })()`,
+            returnByValue: true,
+        });
+        return result.result.value;
+    }
+
+    async clickCanvas(nx, ny) {
+        const rect = await this.canvasRect();
+        await this.click(rect.x + rect.w * nx, rect.y + rect.h * ny);
+    }
+
+    async pressKey(key, code, virtualKey) {
+        await this.canvasRect();
+        const event = {
+            key,
+            code,
+            windowsVirtualKeyCode: virtualKey,
+            nativeVirtualKeyCode: virtualKey,
+        };
+        await this.send('Input.dispatchKeyEvent', { type: 'keyDown', ...event });
+        await this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...event });
+    }
+
     close() {
         if (this.ws) {
             this.ws.close();
@@ -171,9 +201,10 @@ async function main() {
             '--headless=new',
             '--disable-gpu',
             '--no-sandbox',
-            '--window-size=1280,720',
+            '--user-data-dir=C:/Users/Public/cppgame-chrome-profile',
+            '--window-size=1280,800',
             `--remote-debugging-port=${debugPort}`,
-            '--remote-debugging-address=0.0.0.0',
+            '--remote-debugging-address=127.0.0.1',
             'about:blank',
         ],
         { stdio: 'ignore' },
@@ -196,9 +227,10 @@ async function main() {
 
         await session.screenshot('/mnt/c/Users/Public/cppgame-menu.png');
 
-        await session.click(640, 330);
+        await session.clickCanvas(0.5, 0.46);
         await sleep(1500);
-        await session.click(384, 392);
+        await session.screenshot('/mnt/c/Users/Public/cppgame-class.png');
+        await session.clickCanvas(0.30, 0.545);
         await sleep(3000);
 
         blob = session.logs.join('\n');
@@ -209,7 +241,27 @@ async function main() {
             'Adventure started as',
         ]) {
             if (!blob.includes(token)) {
-                throw new Error(`Missing playthrough log: ${token}`);
+                throw new Error(`Missing playthrough log: ${token}\n${blob}`);
+            }
+        }
+
+        await session.clickCanvas(0.42, 0.38);
+        await sleep(800);
+        await session.pressKey('i', 'KeyI', 73);
+        await sleep(700);
+        await session.screenshot('/mnt/c/Users/Public/cppgame-inventory.png');
+        await session.pressKey('Escape', 'Escape', 27);
+        await sleep(500);
+        await session.pressKey('Escape', 'Escape', 27);
+        await sleep(500);
+        await session.screenshot('/mnt/c/Users/Public/cppgame-pause.png');
+        await session.clickCanvas(0.5, 0.625);
+        await sleep(600);
+
+        blob = session.logs.join('\n');
+        for (const token of ['Move target set', 'Inventory opened.', 'Game paused.', 'Game resumed.']) {
+            if (!blob.includes(token)) {
+                throw new Error(`Missing session log: ${token}\n${blob}`);
             }
         }
         if (blob.includes('Fatal engine error') || blob.includes('shader compilation failed')) {
@@ -218,10 +270,7 @@ async function main() {
 
         await session.screenshot('/mnt/c/Users/Public/cppgame-town.png');
         console.log('WebGL browser playthrough passed.');
-        console.log('  main menu booted');
-        console.log('  class select opened');
-        console.log('  town gameplay entered');
-        console.log('  screenshots: /mnt/c/Users/Public/cppgame-menu.png, /mnt/c/Users/Public/cppgame-town.png');
+        console.log('  main menu, class select, town, move, inventory, pause, resume');
     } finally {
         if (session) {
             session.close();

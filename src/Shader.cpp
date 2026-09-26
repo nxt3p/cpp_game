@@ -6,6 +6,7 @@
 
 #include "EngineAssert.hpp"
 
+#include "engine/FrameProbe.hpp"
 #include "engine/GlBindings.hpp"
 
 #include <fstream>
@@ -13,6 +14,12 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+
+namespace {
+
+unsigned int boundProgramId = 0U;
+
+} // namespace
 
 namespace {
 
@@ -77,91 +84,100 @@ Shader::Shader(const std::string& vertexPath, const std::string& fragmentPath) {
     ENGINE_GL_CHECK();
 }
 
-Shader::~Shader() {
-    if (programId_ != 0U) {
-        glDeleteProgram(programId_);
-        programId_ = 0U;
+void Shader::releaseProgram() noexcept {
+    if (programId_ == 0U) {
+        return;
     }
+    if (boundProgramId == programId_) {
+        boundProgramId = 0U;
+    }
+    glDeleteProgram(programId_);
+    programId_ = 0U;
+    uniformCache_.clear();
 }
 
-Shader::Shader(Shader&& other) noexcept : programId_(other.programId_) {
+Shader::~Shader() {
+    releaseProgram();
+}
+
+Shader::Shader(Shader&& other) noexcept
+    : programId_(other.programId_), uniformCache_(std::move(other.uniformCache_)) {
     other.programId_ = 0U;
+    other.uniformCache_.clear();
 }
 
 Shader& Shader::operator=(Shader&& other) noexcept {
     if (this != &other) {
-        if (programId_ != 0U) {
-            glDeleteProgram(programId_);
-        }
+        releaseProgram();
         programId_ = other.programId_;
+        uniformCache_ = std::move(other.uniformCache_);
         other.programId_ = 0U;
+        other.uniformCache_.clear();
     }
     return *this;
 }
 
 void Shader::use() const {
+    if (boundProgramId == programId_) {
+        return;
+    }
+    FrameProbe::instance().addProgramBind();
+    boundProgramId = programId_;
     glUseProgram(programId_);
-    ENGINE_GL_CHECK();
 }
 
-void Shader::setMat4(const std::string& name, const glm::mat4& value) const {
-    glUseProgram(programId_);
+void Shader::setMat4(const char* name, const glm::mat4& value) const {
+    use();
     const int location = uniformLocation(name);
     if (location < 0) {
         return;
     }
     glUniformMatrix4fv(location, 1, GL_FALSE, &value[0][0]);
-    ENGINE_GL_CHECK();
 }
 
-void Shader::setVec2(const std::string& name, const glm::vec2& value) const {
-    glUseProgram(programId_);
+void Shader::setVec2(const char* name, const glm::vec2& value) const {
+    use();
     const int location = uniformLocation(name);
     if (location < 0) {
         return;
     }
     glUniform2fv(location, 1, &value[0]);
-    ENGINE_GL_CHECK();
 }
 
-void Shader::setVec3(const std::string& name, const glm::vec3& value) const {
-    glUseProgram(programId_);
+void Shader::setVec3(const char* name, const glm::vec3& value) const {
+    use();
     const int location = uniformLocation(name);
     if (location < 0) {
         return;
     }
     glUniform3fv(location, 1, &value[0]);
-    ENGINE_GL_CHECK();
 }
 
-void Shader::setVec4(const std::string& name, const glm::vec4& value) const {
-    glUseProgram(programId_);
+void Shader::setVec4(const char* name, const glm::vec4& value) const {
+    use();
     const int location = uniformLocation(name);
     if (location < 0) {
         return;
     }
     glUniform4fv(location, 1, &value[0]);
-    ENGINE_GL_CHECK();
 }
 
-void Shader::setFloat(const std::string& name, const float value) const {
-    glUseProgram(programId_);
+void Shader::setFloat(const char* name, const float value) const {
+    use();
     const int location = uniformLocation(name);
     if (location < 0) {
         return;
     }
     glUniform1f(location, value);
-    ENGINE_GL_CHECK();
 }
 
-void Shader::setInt(const std::string& name, const int value) const {
-    glUseProgram(programId_);
+void Shader::setInt(const char* name, const int value) const {
+    use();
     const int location = uniformLocation(name);
     if (location < 0) {
         return;
     }
     glUniform1i(location, value);
-    ENGINE_GL_CHECK();
 }
 
 std::string Shader::readFile(const std::string& path) {
@@ -229,11 +245,23 @@ void Shader::linkProgram(unsigned int vertex, unsigned int fragment) {
     ENGINE_GL_CHECK();
 }
 
-int Shader::uniformLocation(const std::string& name) const {
-    const int location = glGetUniformLocation(programId_, name.c_str());
+int Shader::uniformLocation(const char* name) const {
+    const auto cached = uniformCache_.find(name);
+    if (cached != uniformCache_.end()) {
+#ifndef __EMSCRIPTEN__
+        if (cached->second < 0) {
+            throw std::runtime_error(std::string("Uniform not found in shader program: ") + name);
+        }
+#endif
+        return cached->second;
+    }
+
+    FrameProbe::instance().addUniformQuery();
+    const int location = glGetUniformLocation(programId_, name);
+    uniformCache_.emplace(name, location);
 #ifndef __EMSCRIPTEN__
     if (location < 0) {
-        throw std::runtime_error("Uniform not found in shader program: " + name);
+        throw std::runtime_error(std::string("Uniform not found in shader program: ") + name);
     }
 #endif
     return location;

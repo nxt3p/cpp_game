@@ -42,6 +42,7 @@ public:
     void syncScenery(const std::vector<gameplay::WorldEntitySnapshot>& scenery);
 
     void setDifficultyModifiers(const systems::DifficultyModifiers& modifiers) noexcept;
+    void multiplyMobHealth(std::uint32_t entityId, float multiplier) noexcept;
 
     void setTarget(std::uint32_t entityId);
     void clearTarget() noexcept;

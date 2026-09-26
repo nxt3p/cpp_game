@@ -54,6 +54,8 @@ const char* itemCategoryLabel(const ItemCategory category) noexcept {
         return "Relic";
     case ItemCategory::Consumable:
         return "Consumable";
+    case ItemCategory::Material:
+        return "Material";
     case ItemCategory::Misc:
         return "Misc";
     }
@@ -95,6 +97,8 @@ void applyItemDefinition(ItemMetadata& item) {
             item.bonuses = {2, 2, 1, 10, 0.05F, 1, 2.0F};
         } else if (item.rarity == ItemRarity::Legendary) {
             item.bonuses = {4, 3, 2, 20, 0.1F, 3, 4.0F};
+        } else if (item.rarity == ItemRarity::Unique) {
+            item.bonuses = {6, 5, 4, 40, 0.15F, 6, 6.0F};
         } else {
             item.bonuses = {1, 0, 0, 0, 0.0F, 0, 0.0F};
         }
@@ -112,7 +116,8 @@ ItemStatBonuses sumInventoryBonuses(const Inventory& inventory) {
         ItemMetadata item = *inventory.slotAt(index).item;
         applyItemDefinition(item);
 
-        if (item.category == ItemCategory::Consumable) {
+        if (item.category == ItemCategory::Consumable || item.category == ItemCategory::Material ||
+            item.category == ItemCategory::Misc) {
             continue;
         }
 
@@ -193,10 +198,85 @@ std::vector<std::string> formatItemStatLines(const ItemMetadata& item) {
         lines.push_back(masteryLine);
     }
 
-    if (lines.empty() && resolved.category == ItemCategory::Consumable) {
-        lines.push_back("Restores health when used");
+    if (resolved.sockets > 0) {
+        lines.push_back(std::to_string(resolved.sockets) + (resolved.sockets == 1 ? " empty socket" : " empty sockets"));
     }
 
+    if (lines.empty() && resolved.category == ItemCategory::Consumable) {
+        lines.push_back("Restores health when used (Q)");
+    }
+    if (lines.empty() && resolved.category == ItemCategory::Material) {
+        lines.push_back("Crafting material — sells well");
+    }
+    if (lines.empty() && resolved.category == ItemCategory::Misc) {
+        lines.push_back("Junk. Sell it.");
+    }
+
+    return lines;
+}
+
+namespace {
+
+[[nodiscard]] ItemStatBonuses totalBonuses(const ItemMetadata& item) {
+    ItemMetadata resolved = item;
+    applyItemDefinition(resolved);
+    ItemStatBonuses total = resolved.bonuses;
+    const ItemStatBonuses mastery = weaponMasteryBonuses(resolved);
+    total.damage += mastery.damage;
+    total.attackSpeed += mastery.attackSpeed;
+    return total;
+}
+
+void appendSignedLine(std::vector<std::string>& lines, const int delta, const char* label) {
+    if (delta == 0) {
+        return;
+    }
+    lines.push_back((delta > 0 ? "+" : "") + std::to_string(delta) + " " + label);
+}
+
+void appendSignedLine(std::vector<std::string>& lines, const float delta, const char* label) {
+    if (delta > -0.001F && delta < 0.001F) {
+        return;
+    }
+    std::ostringstream line;
+    line.setf(std::ios::fixed);
+    line.precision(2);
+    line << (delta > 0.0F ? "+" : "") << delta << ' ' << label;
+    lines.push_back(line.str());
+}
+
+} // namespace
+
+ItemStatBonuses compareItemBonuses(const ItemMetadata& candidate, const ItemMetadata& equipped) {
+    const ItemStatBonuses a = totalBonuses(candidate);
+    const ItemStatBonuses b = totalBonuses(equipped);
+    ItemStatBonuses delta{};
+    delta.strength = a.strength - b.strength;
+    delta.dexterity = a.dexterity - b.dexterity;
+    delta.vitality = a.vitality - b.vitality;
+    delta.maxHealth = a.maxHealth - b.maxHealth;
+    delta.attackSpeed = a.attackSpeed - b.attackSpeed;
+    delta.damage = a.damage - b.damage;
+    delta.lightRadius = a.lightRadius - b.lightRadius;
+    return delta;
+}
+
+std::vector<std::string> formatItemComparisonLines(
+    const ItemMetadata& candidate,
+    const ItemMetadata& equipped) {
+    const ItemStatBonuses delta = compareItemBonuses(candidate, equipped);
+    std::vector<std::string> lines;
+    appendSignedLine(lines, delta.strength, "Strength");
+    appendSignedLine(lines, delta.dexterity, "Dexterity");
+    appendSignedLine(lines, delta.vitality, "Vitality");
+    appendSignedLine(lines, delta.maxHealth, "Health");
+    appendSignedLine(lines, delta.damage, "Damage");
+    appendSignedLine(lines, delta.attackSpeed, "Attack Speed");
+    appendSignedLine(lines, delta.lightRadius, "Light Radius");
+    if (lines.empty()) {
+        return lines;
+    }
+    lines.insert(lines.begin(), "vs " + equipped.name + ":");
     return lines;
 }
 

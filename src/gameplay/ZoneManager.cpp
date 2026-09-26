@@ -215,4 +215,35 @@ void ZoneManager::shiftPlayerPlainsToTown() {
     player_.setPosition(Vec3{0.0F, 0.0F, 0.0F});
 }
 
+std::uint32_t ZoneManager::spawnEntity(
+    const EntityKind kind,
+    const float x,
+    const float z,
+    const std::uint8_t variant) {
+    const std::uint32_t id = nextEntityId_++;
+    scenery_.push_back(makeEntity(id, kind, x, 0.0F, z, variant));
+    ++sceneryRevision_;
+    if (kind == EntityKind::ENEMY_MOB || kind == EntityKind::ENEMY_BOSS) {
+        mobController_.registerMob(id, kind);
+    }
+    return id;
+}
+
+void ZoneManager::nudgeEntity(const std::uint32_t entityId, const float deltaX, const float deltaZ) noexcept {
+    for (WorldEntitySnapshot& entity : scenery_) {
+        if (entity.id != entityId) {
+            continue;
+        }
+        entity.position.x += deltaX;
+        entity.position.z += deltaZ;
+        return;
+    }
+}
+
+void ZoneManager::shiftSceneryX(const float deltaX) noexcept {
+    for (WorldEntitySnapshot& entity : scenery_) {
+        entity.position.x += deltaX;
+    }
+}
+
 } // namespace gameplay

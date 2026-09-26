@@ -1,0 +1,52 @@
+{
+  "frameWidth": 64,
+  "frameHeight": 64,
+  "columns": 6,
+  "directions": [
+    "south",
+    "southwest",
+    "west",
+    "northwest",
+    "north",
+    "northeast",
+    "east",
+    "southeast"
+  ],
+  "clips": [
+    {
+      "name": "idle",
+      "baseRow": 0,
+      "frames": 4,
+      "fps": 6.0,
+      "loop": true
+    },
+    {
+      "name": "walk",
+      "baseRow": 8,
+      "frames": 4,
+      "fps": 10.0,
+      "loop": true
+    },
+    {
+      "name": "attack",
+      "baseRow": 16,
+      "frames": 4,
+      "fps": 12.0,
+      "loop": false
+    },
+    {
+      "name": "hit",
+      "baseRow": 24,
+      "frames": 2,
+      "fps": 12.0,
+      "loop": false
+    },
+    {
+      "name": "death",
+      "baseRow": 32,
+      "frames": 4,
+      "fps": 8.0,
+      "loop": false
+    }
+  ]
+}

@@ -9,7 +9,8 @@ namespace systems {
 enum class ItemRarity : std::uint8_t {
     Common,
     Rare,
-    Legendary
+    Legendary,
+    Unique
 };
 
 enum class ActionType : std::uint8_t {
@@ -42,6 +43,7 @@ enum class ItemCategory : std::uint8_t {
     Charm,
     Relic,
     Consumable,
+    Material,
     Misc
 };
 
@@ -67,6 +69,8 @@ struct ItemMetadata {
     int masteryLevel{1};
     int masteryXp{0};
     int upgradeLevel{0};
+    /// Empty gem sockets (0 = plain gear). Medium-tier "socketed gear" rolls 1-3.
+    int sockets{0};
 };
 
 [[nodiscard]] int actionWeight(ActionType type) noexcept;

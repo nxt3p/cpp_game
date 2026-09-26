@@ -49,6 +49,8 @@ public:
 
     [[nodiscard]] EquipmentActionResult equipFromInventory(Inventory& inventory, int inventoryIndex);
     [[nodiscard]] EquipmentActionResult unequipToInventory(Inventory& inventory, EquipmentSlotKind slot);
+    /// Places the equipped item into a specific empty inventory slot.
+    [[nodiscard]] EquipmentActionResult unequipToIndex(Inventory& inventory, EquipmentSlotKind slot, int inventoryIndex);
 
     void clearAll() noexcept;
     void setSlot(EquipmentSlotKind slot, const ItemMetadata& item);

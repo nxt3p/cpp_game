@@ -131,7 +131,7 @@ struct SettingsPanelLayout {
     float titleScale{2.6F};
     float labelScale{1.9F};
     float valueScale{1.7F};
-    static constexpr int kRowCount = 6;
+    static constexpr int kRowCount = 7;
     SettingsRowLayout rows[kRowCount]{};
 };
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/FrameProbe.hpp"
 #include "engine/GlBindings.hpp"
 
 #include <cstdio>
@@ -26,6 +27,7 @@ inline std::string glErrorString(GLenum error) {
 }
 
 inline void assertNoGlError(const char* file, int line) {
+    FrameProbe::instance().addGlErrorCheck();
     const GLenum error = glGetError();
     if (error == GL_NO_ERROR) {
         return;

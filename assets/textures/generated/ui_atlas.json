@@ -1,0 +1,27 @@
+{
+  "imageWidth": 512,
+  "imageHeight": 256,
+  "frames": [
+    {
+      "name": "globe_ring",
+      "x": 0,
+      "y": 0,
+      "w": 128,
+      "h": 128
+    },
+    {
+      "name": "inventory_panel",
+      "x": 128,
+      "y": 0,
+      "w": 192,
+      "h": 128
+    },
+    {
+      "name": "hotbar_frame",
+      "x": 336,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    }
+  ]
+}

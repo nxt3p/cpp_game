@@ -2,11 +2,14 @@
 
 #include "EngineAssert.hpp"
 
+#include "engine/FrameProbe.hpp"
 #include "engine/GlBindings.hpp"
 
 #include <array>
 #include <cmath>
 #include <string>
+
+#include <glm/glm.hpp>
 
 namespace render {
 
@@ -73,7 +76,7 @@ void SpriteRenderer::flushBillboardBatch() const {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(batchVertexData_.size() / 5U));
     glBindVertexArray(0);
-    ENGINE_GL_CHECK();
+    engine::FrameProbe::instance().addDraw();
 
     batchVertexData_.clear();
     batchTexture_ = nullptr;
@@ -156,7 +159,7 @@ void drawBillboardVertices(
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
-    ENGINE_GL_CHECK();
+    engine::FrameProbe::instance().addDraw();
 }
 
 [[nodiscard]] std::array<float, 30> buildBillboardVertices(
@@ -187,6 +190,35 @@ void drawBillboardVertices(
         topRight.x, topRight.y, topRight.z, u1, v1,
         topLeft.x, topLeft.y, topLeft.z, u0, v1,
         bottomLeft.x, bottomLeft.y, bottomLeft.z, u0, v0,
+    };
+}
+
+[[nodiscard]] std::array<float, 30> buildGroundShadowVertices(
+    const glm::vec3& worldPosition,
+    const float radius,
+    const glm::mat4& view) {
+    glm::vec3 right(view[0][0], 0.0F, view[2][0]);
+    if (glm::dot(right, right) < 1.0e-6F) {
+        right = glm::vec3(1.0F, 0.0F, 0.0F);
+    } else {
+        right = glm::normalize(right);
+    }
+    const glm::vec3 forward = glm::normalize(glm::cross(glm::vec3(0.0F, 1.0F, 0.0F), right));
+    const float radiusX = std::max(radius, 0.15F);
+    const float radiusZ = radiusX * 0.55F;
+    const glm::vec3 center(worldPosition.x, worldPosition.y + 0.02F, worldPosition.z);
+    const glm::vec3 left = center - right * radiusX - forward * radiusZ;
+    const glm::vec3 rightPoint = center + right * radiusX - forward * radiusZ;
+    const glm::vec3 farPoint = center + right * radiusX + forward * radiusZ;
+    const glm::vec3 nearPoint = center - right * radiusX + forward * radiusZ;
+
+    return {
+        left.x, left.y, left.z, 0.0F, 0.0F,
+        rightPoint.x, rightPoint.y, rightPoint.z, 1.0F, 0.0F,
+        farPoint.x, farPoint.y, farPoint.z, 1.0F, 1.0F,
+        farPoint.x, farPoint.y, farPoint.z, 1.0F, 1.0F,
+        nearPoint.x, nearPoint.y, nearPoint.z, 0.0F, 1.0F,
+        left.x, left.y, left.z, 0.0F, 0.0F,
     };
 }
 
@@ -293,7 +325,42 @@ void SpriteRenderer::drawBillboardOutline(
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
-    ENGINE_GL_CHECK();
+    engine::FrameProbe::instance().addDraw();
+}
+
+void SpriteRenderer::drawGroundShadow(
+    const Texture& texture,
+    const glm::vec3& worldPosition,
+    const float radius,
+    const glm::mat4& view,
+    const glm::mat4& projection,
+    const glm::vec3& playerLightPosition,
+    const float lightRadius,
+    const float ambientDark,
+    const float ambientBright) const {
+    if (!texture.isValid() || radius <= 0.0F) {
+        return;
+    }
+
+    const std::array<float, 30> vertices = buildGroundShadowVertices(worldPosition, radius, view);
+    if (batchPassActive_) {
+        submitBillboard(texture, vertices);
+        return;
+    }
+
+    drawBillboardVertices(
+        shader_,
+        vao_,
+        vbo_,
+        vertices,
+        texture,
+        view,
+        projection,
+        playerLightPosition,
+        lightRadius,
+        ambientDark,
+        ambientBright,
+        glm::vec4(1.0F));
 }
 
 void SpriteRenderer::drawBillboardUV(

@@ -36,6 +36,16 @@ void resetSoulGainMultiplier(ui::CharacterScreenData& stats) noexcept;
 
 [[nodiscard]] int soulUpgradeCost(int upgradesPurchased) noexcept;
 
+/// Kills pay very little experience. The next level costs more than the last, so gear is the real power.
+[[nodiscard]] int experienceRequiredForLevel(int level) noexcept;
+
+struct ExperienceGrant {
+    int experienceGained{0};
+    int levelsGained{0};
+};
+
+[[nodiscard]] ExperienceGrant grantCombatExperience(ui::CharacterScreenData& stats, int amount) noexcept;
+
 [[nodiscard]] SoulUpgradeResult tryPurchaseStatUpgrade(
     ui::CharacterScreenData& stats,
     SoulStatKind stat,

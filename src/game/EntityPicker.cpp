@@ -114,17 +114,16 @@ ScreenRay buildScreenRay(
     int screenWidth,
     int screenHeight,
     const gameplay::CameraMatrices& cameraMatrices) {
-    const float normalizedX = (2.0F * mouseX) / static_cast<float>(screenWidth) - 1.0F;
-    const float normalizedY = 1.0F - (2.0F * mouseY) / static_cast<float>(screenHeight);
-
-    glm::vec4 rayClip(normalizedX, normalizedY, -1.0F, 1.0F);
-    glm::vec4 rayEye = glm::inverse(cameraMatrices.projection) * rayClip;
-    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0F, 0.0F);
-    const glm::vec4 rayWorld = glm::inverse(cameraMatrices.view) * rayEye;
-
+    const gameplay::PointerRay pointer =
+        gameplay::pointerRayFromScreen(mouseX, mouseY, screenWidth, screenHeight, cameraMatrices);
     ScreenRay ray{};
-    ray.origin = cameraMatrices.eye;
-    ray.direction = glm::normalize(glm::vec3(rayWorld));
+    if (!pointer.valid) {
+        ray.origin = cameraMatrices.eye;
+        ray.direction = glm::vec3(0.0F, -1.0F, 0.0F);
+        return ray;
+    }
+    ray.origin = pointer.origin;
+    ray.direction = pointer.direction;
     return ray;
 }
 

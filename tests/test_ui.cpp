@@ -3,6 +3,8 @@
 
 #include <cmath>
 
+#include "ui/GlobeFill.hpp"
+#include "ui/HudConsoleLayout.hpp"
 #include "ui/MinimapSystem.hpp"
 #include "ui/UiInteraction.hpp"
 #include "ui/UiLayout.hpp"
@@ -65,6 +67,22 @@ TEST_CASE("Paper doll inventory layout exposes fifteen equipment slots", "[ui][l
 
     const ui::Rect bagSlot = layout.inventorySlotRect(0);
     CHECK(bagSlot.y > layout.portrait.y + layout.portrait.height);
+
+    const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(scale);
+    CHECK(layout.panel.y >= console.messageStrip.y + console.messageStrip.height - 0.5F);
+    CHECK(layout.panel.y + layout.panel.height <= console.panel.y + 0.5F);
+    const ui::Rect lastBag = layout.inventorySlotRect(layout.bagColumns * layout.bagRows - 1);
+    CHECK(lastBag.y + lastBag.height <= console.panel.y);
+
+    for (const auto& [width, height] : {std::pair{1920, 1080}, std::pair{3840, 2160}}) {
+        const ui::UiScale sized(width, height);
+        const ui::InventoryPaperDollLayout sizedLayout = ui::computeInventoryPaperDollLayout(sized, 6, 4);
+        const ui::HudConsoleLayout sizedConsole = ui::computeHudConsoleLayout(sized);
+        CHECK(sizedLayout.panel.y >= 0.0F);
+        CHECK(sizedLayout.panel.y + sizedLayout.panel.height <= sizedConsole.panel.y + 0.5F);
+        const ui::CharacterPanelLayout character = ui::computeCharacterPanelLayout(sized);
+        CHECK(character.panel.y + character.panel.height <= sizedConsole.panel.y + 0.5F);
+    }
 }
 
 TEST_CASE("Inventory grid recenters and scales slot matrix", "[ui][layout]") {
@@ -129,7 +147,6 @@ TEST_CASE("Ui interaction registry resolves slots and blocking regions", "[ui][i
     const ui::Rect slot0 = inventory.inventorySlotRect(0);
     const float probeX = slot0.x + slot0.width * 0.5F;
     const float probeY = slot0.y + slot0.height * 0.5F;
-
     const std::optional<int> hovered = registry.inventorySlotAt(probeX, probeY);
     REQUIRE(hovered.has_value());
     CHECK(*hovered == 0);
@@ -175,19 +192,44 @@ TEST_CASE("Settings panel rows do not overlap at 4K scale", "[ui][settings]") {
     }
 }
 
-TEST_CASE("Minimap preserves terrain aspect inside square widget", "[ui][minimap]") {
+TEST_CASE("Globe liquid stays inside the ring and skill labels clear the hotkey", "[ui][hud]") {
+    constexpr float kRadius = 52.0F;
+    const float liquidRadius = kRadius * ui::kGlobeLiquidRadiusFraction;
+    const float wave = kRadius * ui::kGlobeWaveAmplitudeFraction;
+    CHECK(liquidRadius + wave < kRadius * ui::kGlobeRingInnerRadiusFraction);
+
+    for (int step = 0; step < 32; ++step) {
+        const float phase = static_cast<float>(step) * 0.4F;
+        const float surface = ui::liquidSurfaceY(100.0F, liquidRadius, 0.65F, phase, wave);
+        CHECK(surface >= 100.0F - liquidRadius - 0.01F);
+        CHECK(surface <= 100.0F + liquidRadius + 0.01F);
+        const float half = ui::discHalfWidth(liquidRadius, surface - 100.0F);
+        CHECK(half <= liquidRadius + 0.01F);
+    }
+
+    const ui::Rect slot{100.0F, 200.0F, 46.0F, 46.0F};
+    const ui::Rect glyph = ui::hudGlyphRect(slot, ui::kHudHotkeyBand);
+    const ui::Rect hotkey = ui::hudHotkeyRect(slot, ui::kHudHotkeyBand);
+    CHECK(glyph.y + glyph.height <= hotkey.y + 0.01F);
+    CHECK(hotkey.y + hotkey.height <= slot.y + slot.height + 0.01F);
+    CHECK(ui::hudCooldownRadius(slot) * 2.0F < slot.width);
+}
+
+TEST_CASE("Minimap radar is isotropic around the player", "[ui][minimap]") {
     ui::MinimapSystem minimap;
     minimap.setViewport(ui::Rect2D{0.0F, 0.0F, 200.0F, 200.0F});
-    minimap.setTerrainBounds(ui::TerrainBounds{0.0F, 200.0F, 0.0F, 100.0F});
+    minimap.setViewRadius(40.0F);
 
-    const ui::MinimapLayer layer = minimap.buildLayer(100.0F, 50.0F, {{50.0F, 25.0F}});
+    const ui::MinimapLayer layer = minimap.buildLayer(
+        10.0F,
+        -4.0F,
+        {{30.0F, -4.0F, ui::MinimapBlipKind::Ally}, {10.0F, 16.0F, ui::MinimapBlipKind::Loot}});
 
-    CHECK(layer.player.normalized.x == Catch::Approx(0.5F).margin(1e-4F));
-    CHECK(layer.player.normalized.y == Catch::Approx(0.5F).margin(1e-4F));
     CHECK(layer.player.pixel.x == Catch::Approx(100.0F).margin(1e-3F));
     CHECK(layer.player.pixel.y == Catch::Approx(100.0F).margin(1e-3F));
-
-    const float entityOffsetX = layer.entities.front().pixel.x - layer.player.pixel.x;
-    const float entityOffsetY = layer.entities.front().pixel.y - layer.player.pixel.y;
-    CHECK(std::abs(entityOffsetX) == Catch::Approx(std::abs(entityOffsetY * 2.0F)).margin(1e-2F));
+    REQUIRE(layer.entities.size() == 2);
+    const float offsetX = layer.entities[0].pixel.x - layer.player.pixel.x;
+    const float offsetY = layer.entities[1].pixel.y - layer.player.pixel.y;
+    CHECK(offsetX == Catch::Approx(offsetY).margin(1e-2F));
+    CHECK(offsetX > 0.0F);
 }

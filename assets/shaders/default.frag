@@ -13,6 +13,11 @@ uniform vec3 u_ObjectColor;
 
 out vec4 FragColor;
 
+// Dark-fantasy grade: cold blue-violet shadows, warm amber torch, gentle desaturation.
+const vec3 kShadowTint = vec3(0.55, 0.62, 0.95);
+const vec3 kTorchTint = vec3(1.10, 0.92, 0.72);
+const float kDesaturate = 0.18;
+
 void main() {
     vec3 normal = normalize(v2f_Normal);
     if (length(normal) < 0.0001) {
@@ -30,6 +35,16 @@ void main() {
     vec3 diffuse = diffuseStrength * u_LightColor * u_ObjectColor;
 
     vec3 result = ambient + diffuse;
+
+    // Palette grade: tint by how deep in shadow we are, then desaturate slightly.
+    vec3 tint = mix(kShadowTint, kTorchTint, torch);
+    result *= tint;
+    float luma = dot(result, vec3(0.299, 0.587, 0.114));
+    result = mix(result, vec3(luma), kDesaturate);
+
+    // Far fog into the void so the world edge fades instead of clipping.
+    float fog = smoothstep(u_LightRadius * 2.2, u_LightRadius * 5.5, dist);
+    result = mix(result, vec3(0.015, 0.018, 0.03), fog * 0.75);
 
     // v2f_TexCoords reserved for future texture sampling
     float texMix = clamp(v2f_TexCoords.x * 0.0 + v2f_TexCoords.y * 0.0, 0.0, 1.0);

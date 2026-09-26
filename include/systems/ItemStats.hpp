@@ -37,4 +37,12 @@ void applyItemDefinition(ItemMetadata& item);
 [[nodiscard]] std::vector<std::string> formatItemStatLines(const ItemMetadata& item);
 [[nodiscard]] std::string formatItemTooltip(const ItemMetadata& item);
 
+/// Signed stat deltas of `candidate` versus `equipped` (candidate - equipped), mastery included.
+[[nodiscard]] ItemStatBonuses compareItemBonuses(const ItemMetadata& candidate, const ItemMetadata& equipped);
+
+/// Human readable "vs equipped" lines, e.g. "+3 Damage  (vs Sturdy Blade)"; empty when identical.
+[[nodiscard]] std::vector<std::string> formatItemComparisonLines(
+    const ItemMetadata& candidate,
+    const ItemMetadata& equipped);
+
 } // namespace systems

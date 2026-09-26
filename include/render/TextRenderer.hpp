@@ -4,6 +4,7 @@
 #include "ui/UiHitTest.hpp"
 
 #include <string>
+#include <vector>
 
 namespace render {
 
@@ -20,11 +21,26 @@ public:
     [[nodiscard]] float measureTextWidth(const char* text, float scale) const;
 
 private:
+    struct TextVertex {
+        float px;
+        float py;
+        float pz;
+        unsigned char rgba[4];
+    };
+
+    void appendText(float x, float y, const char* text, float scale, const float color[4]) const;
+    void flushOverlay() const;
+
     engine::Shader shader_;
     mutable unsigned int vao_{0};
     mutable unsigned int vbo_{0};
     int screenWidth_{0};
     int screenHeight_{0};
+    mutable bool overlayOpen_{false};
+    mutable std::vector<unsigned char> glyphScratch_;
+    mutable std::vector<char> printScratch_;
+    mutable std::string sanitizedScratch_;
+    mutable std::vector<TextVertex> overlayVertices_;
 };
 
 } // namespace render

@@ -43,7 +43,8 @@ void logBanner() {
     logInfo("Build loading...");
     logHelp("Front-end: click buttons with the mouse.");
     logHelp("Main Menu -> Play -> pick a class box -> enter Town.");
-    logHelp("In-game: click ground to move | C stats | I inventory | E trade | Esc pause");
+    logHelp("In-game: click ground to move | 1-8 skills | Q potion | C stats | I inventory | E trade | Esc pause");
+    logHelp("Settings > Difficulty cycles Normal / Nightmare / Hell (unlocked by boss kills).");
     logHelp("Pause menu Save and Exit stores progress and returns to the main menu.");
     logHelp("Web saves persist in browser localStorage; Windows saves use %LOCALAPPDATA%\\cppGame.");
     std::cout << "============================================================" << std::endl;

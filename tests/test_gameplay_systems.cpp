@@ -3,6 +3,8 @@
 
 #include <glm/glm.hpp>
 
+#include <cmath>
+
 #include "gameplay/GameStateManager.hpp"
 #include "gameplay/IsometricCamera.hpp"
 #include "gameplay/ZoneManager.hpp"
@@ -19,11 +21,11 @@ TEST_CASE("Isometric camera tracks player with fixed offset", "[gameplay][camera
     const glm::vec3 eye = camera.eyePositionForTarget(player);
     const gameplay::CameraMatrices matrices = camera.matricesForTarget(player);
 
-    CHECK(eye.x == Catch::Approx(player.x + 12.0F).margin(1e-4F));
-    CHECK(eye.y == Catch::Approx(player.y + 18.0F).margin(1e-4F));
-    CHECK(eye.z == Catch::Approx(player.z + 12.0F).margin(1e-4F));
-    CHECK(glm::determinant(matrices.view) != Catch::Approx(0.0F).margin(1e-4F));
-    CHECK(glm::determinant(matrices.projection) != Catch::Approx(0.0F).margin(1e-4F));
+    CHECK(eye.x == Catch::Approx(player.x + gameplay::kIsometricEyeOffset.x).margin(1e-4F));
+    CHECK(eye.y == Catch::Approx(player.y + gameplay::kIsometricEyeOffset.y).margin(1e-4F));
+    CHECK(eye.z == Catch::Approx(player.z + gameplay::kIsometricEyeOffset.z).margin(1e-4F));
+    CHECK(std::abs(glm::determinant(matrices.view)) > 1.0e-6F);
+    CHECK(std::abs(glm::determinant(matrices.projection)) > 1.0e-8F);
 }
 
 TEST_CASE("Zone transition shifts player from town to plains", "[gameplay][zone]") {
@@ -117,17 +119,21 @@ TEST_CASE("TradeSystem validates gold before swaps", "[systems][trade]") {
     CHECK(vendorInventory.slotAt(0).item->name == "Rusty Sword");
 }
 
-TEST_CASE("Minimap maps world coordinates into viewport pixels", "[ui][minimap]") {
+TEST_CASE("Minimap keeps the player centered and drops blips outside the local radius", "[ui][minimap]") {
     ui::MinimapSystem minimap;
     minimap.setViewport(ui::Rect2D{20.0F, 20.0F, 200.0F, 200.0F});
-    minimap.setTerrainBounds(ui::TerrainBounds{-100.0F, 100.0F, -100.0F, 100.0F});
+    minimap.setViewRadius(40.0F);
 
-    const ui::MinimapLayer layer = minimap.buildLayer(0.0F, 0.0F, {{50.0F, -50.0F}});
+    const ui::MinimapLayer layer = minimap.buildLayer(
+        0.0F,
+        0.0F,
+        {{20.0F, 0.0F, ui::MinimapBlipKind::Hostile}, {100.0F, 0.0F, ui::MinimapBlipKind::Boss}});
 
-    CHECK(layer.player.normalized.x == Catch::Approx(0.5F).margin(1e-4F));
-    CHECK(layer.player.normalized.y == Catch::Approx(0.5F).margin(1e-4F));
     CHECK(layer.player.pixel.x == Catch::Approx(120.0F).margin(1e-3F));
     CHECK(layer.player.pixel.y == Catch::Approx(120.0F).margin(1e-3F));
+    CHECK(layer.radiusPixels == Catch::Approx(99.0F).margin(1e-3F));
     REQUIRE(layer.entities.size() == 1);
-    CHECK(layer.entities.front().inBounds);
+    CHECK(layer.entities.front().kind == ui::MinimapBlipKind::Hostile);
+    CHECK(layer.entities.front().pixel.x == Catch::Approx(120.0F + 0.5F * 99.0F).margin(1e-2F));
+    CHECK(layer.entities.front().pixel.y == Catch::Approx(120.0F).margin(1e-2F));
 }

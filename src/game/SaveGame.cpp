@@ -250,6 +250,7 @@ void skipWhitespace(const std::string& json, std::size_t& cursor) {
         {"Charm", systems::ItemCategory::Charm},
         {"Relic", systems::ItemCategory::Relic},
         {"Consumable", systems::ItemCategory::Consumable},
+        {"Material", systems::ItemCategory::Material},
         {"Misc", systems::ItemCategory::Misc},
     };
     const auto iterator = lookup.find(value);
@@ -257,11 +258,14 @@ void skipWhitespace(const std::string& json, std::size_t& cursor) {
 }
 
 [[nodiscard]] systems::ItemRarity itemRarityFromLabel(const std::string& value) noexcept {
-    if (value == "Rare") {
+    if (value == "Magic" || value == "Rare") {
         return systems::ItemRarity::Rare;
     }
     if (value == "Legendary") {
         return systems::ItemRarity::Legendary;
+    }
+    if (value == "Unique") {
+        return systems::ItemRarity::Unique;
     }
     return systems::ItemRarity::Common;
 }
@@ -308,6 +312,7 @@ void writeItemJson(std::ostringstream& stream, const systems::ItemMetadata& item
            << "\"masteryLevel\":" << item.masteryLevel << ","
            << "\"masteryXp\":" << item.masteryXp << ","
            << "\"upgradeLevel\":" << item.upgradeLevel << ","
+           << "\"sockets\":" << item.sockets << ","
            << "\"bonuses\":";
     writeItemBonusesJson(stream, item.bonuses);
     stream << "}";
@@ -444,6 +449,12 @@ void writeItemJson(std::ostringstream& stream, const systems::ItemMetadata& item
                 return false;
             }
             item.upgradeLevel = static_cast<int>(number);
+        } else if (key == "sockets") {
+            double number = 0.0;
+            if (!parseNumberValue(json, cursor, number)) {
+                return false;
+            }
+            item.sockets = static_cast<int>(number);
         } else if (key == "bonuses") {
             if (!parseItemBonuses(json, cursor, item.bonuses)) {
                 return false;
@@ -551,7 +562,9 @@ std::string SaveGameIO::serializeSnapshot(const SaveGameSnapshot& snapshot) {
            << "\"mobsKilledThisDepth\":" << snapshot.progression.mobsKilledThisDepth << ","
            << "\"lifetimeMobKills\":" << snapshot.progression.lifetimeMobKills << ","
            << "\"lootCoinPool\":" << snapshot.progression.lootCoinPool << ","
-           << "\"lootRngSeed\":" << snapshot.progression.lootRngSeed << "},\n";
+           << "\"lootRngSeed\":" << snapshot.progression.lootRngSeed << ","
+           << "\"lootPityCounter\":" << snapshot.progression.lootPityCounter << ","
+           << "\"difficultyTier\":" << snapshot.progression.difficultyTier << "},\n";
 
     stream << "  \"world\":{"
            << "\"activeZone\":" << escapeJsonString(worldZoneToString(snapshot.world.activeZone)) << ","
@@ -768,6 +781,10 @@ SaveGameResult SaveGameIO::deserializeSnapshot(
                     outSnapshot.progression.lootCoinPool = static_cast<int>(number);
                 } else if (field == "lootRngSeed") {
                     outSnapshot.progression.lootRngSeed = static_cast<std::uint32_t>(number);
+                } else if (field == "lootPityCounter") {
+                    outSnapshot.progression.lootPityCounter = static_cast<int>(number);
+                } else if (field == "difficultyTier") {
+                    outSnapshot.progression.difficultyTier = static_cast<int>(number);
                 }
                 skipWhitespace(json, cursor);
                 if (cursor < json.size() && json[cursor] == ',') {

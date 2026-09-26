@@ -64,6 +64,8 @@ void appendUpgradeSuffix(ItemMetadata& item) {
         return ItemRarity::Legendary;
     case ItemRarity::Legendary:
         return ItemRarity::Legendary;
+    case ItemRarity::Unique:
+        return ItemRarity::Unique;
     }
     return ItemRarity::Common;
 }
@@ -150,6 +152,7 @@ int masterworkGoldCost(const ItemRarity rarity) noexcept {
     case ItemRarity::Rare:
         return 280;
     case ItemRarity::Legendary:
+    case ItemRarity::Unique:
         return 0;
     }
     return 9999;
@@ -260,7 +263,8 @@ int reforgeGoldCost() noexcept {
 BlacksmithResult reforgeBackpackItem(ItemMetadata& item, const std::uint32_t seed, int& playerGold) {
     ItemMetadata resolved = item;
     applyItemDefinition(resolved);
-    if (resolved.category == ItemCategory::Consumable || resolved.category == ItemCategory::Misc) {
+    if (resolved.category == ItemCategory::Consumable || resolved.category == ItemCategory::Misc ||
+        resolved.category == ItemCategory::Material) {
         return {false, "Cannot reforge consumables"};
     }
 

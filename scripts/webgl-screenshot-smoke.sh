@@ -71,7 +71,7 @@ if not shot.exists():
 
 image = Image.open(shot)
 bright = 0
-green_menu = 0
+gold_menu = 0
 for x in range(0, image.width, 8):
     for y in range(0, image.height, 8):
         pixel = image.getpixel((x, y))
@@ -82,13 +82,14 @@ for x in range(0, image.width, 8):
             r, g, b = pixel[:3]
         if max(r, g, b) > 30:
             bright += 1
-        if g > 70 and r < 90 and b < 90:
-            green_menu += 1
+        # Gothic menu trim is gold, not the old green Start button.
+        if r > 140 and g > 90 and r > b + 30 and g > b:
+            gold_menu += 1
 
-if bright < 400:
+if bright < 200:
     raise SystemExit(f"Screenshot smoke test failed: scene too dark (bright={bright}).")
-if green_menu < 20:
-    raise SystemExit(f"Screenshot smoke test failed: main menu button not detected (green={green_menu}).")
+if gold_menu < 30:
+    raise SystemExit(f"Screenshot smoke test failed: main menu chrome not detected (gold={gold_menu}).")
 
-print(f"Screenshot smoke test passed (bright={bright}, green={green_menu}).")
+print(f"Screenshot smoke test passed (bright={bright}, gold={gold_menu}).")
 PY

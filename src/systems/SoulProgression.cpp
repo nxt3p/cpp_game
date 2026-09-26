@@ -63,7 +63,6 @@ SoulUpgradeResult tryPurchaseStatUpgrade(
 
     stats.carriedSouls -= cost;
     ++stats.statUpgradesPurchased;
-    ++stats.level;
 
     switch (stat) {
     case SoulStatKind::Strength:
@@ -80,8 +79,35 @@ SoulUpgradeResult tryPurchaseStatUpgrade(
     result.success = true;
     result.soulsSpent = cost;
     result.remainingSouls = stats.carriedSouls;
-    result.message = "Stat increased for " + std::to_string(cost) + " souls.";
+    result.message = "Stat increased for " + std::to_string(cost) + " souls. Levels still come from the road.";
     return result;
+}
+
+int experienceRequiredForLevel(const int level) noexcept {
+    const int safeLevel = std::max(1, level);
+    return 140 + (safeLevel - 1) * (safeLevel - 1) * 90;
+}
+
+ExperienceGrant grantCombatExperience(ui::CharacterScreenData& stats, const int amount) noexcept {
+    ExperienceGrant grant{};
+    if (amount <= 0) {
+        stats.experienceToNextLevel = experienceRequiredForLevel(stats.level);
+        return grant;
+    }
+
+    stats.experience += amount;
+    grant.experienceGained = amount;
+    stats.experienceToNextLevel = experienceRequiredForLevel(stats.level);
+    while (stats.experience >= stats.experienceToNextLevel && grant.levelsGained < 1) {
+        stats.experience -= stats.experienceToNextLevel;
+        ++stats.level;
+        ++stats.strength;
+        ++stats.dexterity;
+        ++stats.vitality;
+        ++grant.levelsGained;
+        stats.experienceToNextLevel = experienceRequiredForLevel(stats.level);
+    }
+    return grant;
 }
 
 int mobMeleeDamage(

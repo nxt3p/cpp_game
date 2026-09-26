@@ -21,9 +21,11 @@ const char* rarityLabel(ItemRarity rarity) noexcept {
     case ItemRarity::Common:
         return "Common";
     case ItemRarity::Rare:
-        return "Rare";
+        return "Magic";
     case ItemRarity::Legendary:
         return "Legendary";
+    case ItemRarity::Unique:
+        return "Unique";
     }
     return "Unknown";
 }

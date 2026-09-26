@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gameplay/GameTypes.hpp"
+#include "render/AnimationStateMachine.hpp"
 #include "render/SpriteSheet.hpp"
 #include "render/Texture.hpp"
 
@@ -31,12 +32,26 @@ public:
         SpriteFacing facing,
         float elapsedSeconds) const noexcept;
 
+    [[nodiscard]] SpriteFrameSample sampleMobSprite(
+        gameplay::EntityKind kind,
+        std::uint32_t entityId,
+        bool useIdlePose,
+        SpriteClip animation,
+        SpriteFacing8 facing,
+        float elapsedSeconds) const noexcept;
+
     [[nodiscard]] const SpriteSheet& classSheet(game::CharacterClass playerClass) const noexcept;
 
     [[nodiscard]] SpriteFrameSample sampleClassSprite(
         game::CharacterClass playerClass,
         SpriteClip animation,
         SpriteFacing facing,
+        float elapsedSeconds) const noexcept;
+
+    [[nodiscard]] SpriteFrameSample sampleClassSprite(
+        game::CharacterClass playerClass,
+        SpriteClip animation,
+        SpriteFacing8 facing,
         float elapsedSeconds) const noexcept;
 
     [[nodiscard]] float spriteWorldHeight(gameplay::EntityKind kind) const noexcept;
@@ -50,6 +65,7 @@ private:
 
     bool loaded_{false};
     bool classSheetsLoaded_{false};
+    bool generatedMonster_{false};
     std::array<SpriteSheet, 6> mobActionSheets_{};
     std::array<SpriteSheet, 6> mobIdleSheets_{};
     std::array<SpriteSheet, 3> classSheets_{};

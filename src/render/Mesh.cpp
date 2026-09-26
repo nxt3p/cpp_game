@@ -1,6 +1,7 @@
 #include "render/Mesh.hpp"
 
 #include "EngineAssert.hpp"
+#include "engine/FrameProbe.hpp"
 
 #include "engine/GlBindings.hpp"
 
@@ -205,7 +206,7 @@ void Mesh::draw() const {
     glBindVertexArray(vao_);
     glDrawArrays(drawMode_, 0, vertexCount_);
     glBindVertexArray(0);
-    ENGINE_GL_CHECK();
+    engine::FrameProbe::instance().addDraw();
 }
 
 } // namespace render

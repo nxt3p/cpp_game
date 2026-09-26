@@ -22,9 +22,13 @@ The same gameplay code runs natively (Linux/WSL/Windows) and in the browser via 
 
 - **Front-end flow** — Main menu, class select (Warrior / Ranger / Mage), settings, pause menu
 - **Two zones** — Town hub and Plains combat area with procedural scenery and mob spawns
-- **Combat** — Click-to-move, target mobs, melee attacks, floating damage numbers, boss encounters
-- **Progression** — Soul-based stat upgrades in Town, weapon mastery, depth scaling, loot tiers
-- **Inventory & equipment** — Paper-doll UI, item stats, tooltips, blacksmith sell/forge services
+- **Combat** — Click-to-move, target mobs, melee attacks, critical hits, screen shake + hit-stop, floating damage / crit text, boss encounters
+- **Skills** — Quick-cast hotkey bar (Power Strike, Whirlwind, Heal, Dash) with mana pool and cooldowns; belt potions on **Q**
+- **Slot-machine loot** — Every action inserts coins into a 3-tier reel (Common / Medium / Jackpot) with pity protection; jackpots fire a light pillar, screen flash and Legendary / Unique drops
+- **Progression** — Soul-based stat upgrades in Town, weapon mastery, depth scaling, Normal / Nightmare / Hell difficulty tiers unlocked by boss kills
+- **Dark-fantasy presentation** — Torch-lit shading with cool shadows and fog, particle system (hit sparks, death bursts, spell flashes, ambient dust), 8-way sprite facing with hit / death animation states
+- **D2-style console HUD** — Health / mana globes, skill quick-slots with cooldown sweeps, potion belt, XP bar, minimap overlay
+- **Inventory & equipment** — Paper-doll UI, item stats, hover tooltips with stat comparison versus equipped gear, socketed items, blacksmith sell/forge services
 - **Save / load** — Single-slot saves with Continue flow; platform-specific persistence (see below)
 
 ## Tech Stack
@@ -127,12 +131,14 @@ Output: `build-win-x86_64/GameEngine.exe` with assets staged beside the executab
 | **C** | Character / stat screen |
 | **I** | Inventory & equipment |
 | **E** | Blacksmith trade (Town, near forge) |
+| **1 – 4** | Quick-cast skill slots (Power Strike, Whirlwind, Heal, Dash) |
+| **Q** | Drink first belt potion |
 | **Esc** | Pause menu / close overlays |
 
 ### Pause menu
 
 - **Save and Exit** — Saves progress and returns to the main menu
-- **Settings** — Resolution, graphics quality, minimap, volume
+- **Settings** — Resolution, graphics quality, minimap, volume, difficulty tier (Normal / Nightmare / Hell)
 - **Resume**
 
 ### Main menu
@@ -168,6 +174,9 @@ Notable suites:
 | `[playthrough]` | End-to-end gameplay loop |
 | `[performance]` | Plains frame-time budget |
 | `[save]` | Save round-trip |
+| `[telemetry]` | Slot-machine loot Monte-Carlo (1,000 chests, 5,000 kills, pity cap) |
+| `[arpg]` | Skill bar, combat feedback, animation states, particles, HUD console, difficulty tiers |
+| `[arpg][opengl]` | In-engine ARPG playthrough: hotkeys, melee, 1,000 virtual chests |
 | `[combat]`, `[mobs]`, `[items]` | Core systems |
 
 Run a single suite:

@@ -38,6 +38,16 @@ void CombatSystem::setDifficultyModifiers(const systems::DifficultyModifiers& mo
     mobXpMultiplier_ = modifiers.mobXpMultiplier;
 }
 
+void CombatSystem::multiplyMobHealth(const std::uint32_t entityId, const float multiplier) noexcept {
+    const auto iterator = mobs_.find(entityId);
+    if (iterator == mobs_.end() || multiplier <= 0.0F) {
+        return;
+    }
+    const int scaled = std::max(1, static_cast<int>(std::lround(static_cast<float>(iterator->second.maxHp) * multiplier)));
+    iterator->second.maxHp = scaled;
+    iterator->second.currentHp = scaled;
+}
+
 void CombatSystem::syncScenery(const std::vector<gameplay::WorldEntitySnapshot>& scenery) {
     for (const gameplay::WorldEntitySnapshot& entity : scenery) {
         if (!entity.active || !isAttackableKind(entity.kind)) {

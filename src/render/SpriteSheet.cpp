@@ -215,6 +215,8 @@ SpriteSheetClip defaultClassClip(const SpriteClip animation, const SpriteFacing 
         }
         break;
     case SpriteClip::Attack:
+    case SpriteClip::Attack2:
+    case SpriteClip::Cast:
         clip.framesPerSecond = 12.0F;
         clip.loop = false;
         switch (facing) {
@@ -286,6 +288,8 @@ SpriteSheetClip defaultMobClip(const SpriteClip animation, const SpriteFacing fa
         clip.frameCount = 4;
         break;
     case SpriteClip::Attack:
+    case SpriteClip::Attack2:
+    case SpriteClip::Cast:
         clip.framesPerSecond = 12.0F;
         clip.frameCount = 4;
         clip.loop = false;
@@ -310,6 +314,72 @@ SpriteSheetClip defaultMobClip(const SpriteClip animation, const SpriteFacing fa
     }
 
     return clip;
+}
+
+int frameIndexAtTime(const SpriteSheetClip& clip, const float elapsedSeconds) noexcept;
+
+namespace {
+
+[[nodiscard]] const char* spriteClipAtlasName(const SpriteClip animation) noexcept {
+    switch (animation) {
+    case SpriteClip::Idle:
+        return "idle";
+    case SpriteClip::Walk:
+        return "walk";
+    case SpriteClip::Attack:
+        return "attack";
+    case SpriteClip::Attack2:
+        return "attack2";
+    case SpriteClip::Cast:
+        return "cast";
+    case SpriteClip::Hit:
+        return "hit";
+    case SpriteClip::Death:
+        return "death";
+    case SpriteClip::Portrait:
+        return "portrait";
+    }
+    return "idle";
+}
+
+} // namespace
+
+void SpriteSheet::bindDirectionalClips(DirectionalAtlas atlas) {
+    directional_ = std::move(atlas);
+}
+
+SpriteFrameSample SpriteSheet::sampleDirectional(
+    const SpriteClip animation,
+    const int facingIndex,
+    const float elapsedSeconds) const noexcept {
+    if (!directional_.has_value() || !texture_.isValid()) {
+        return {};
+    }
+
+    const DirectionalClipInfo* info = directional_->find(spriteClipAtlasName(animation));
+    if (info == nullptr) {
+        return {};
+    }
+
+    const int facing = std::clamp(facingIndex, 0, 7);
+    SpriteSheetClip sheetClip{};
+    sheetClip.row = info->baseRow + facing;
+    sheetClip.frameCount = std::max(1, info->frames);
+    sheetClip.framesPerSecond = info->fps;
+    sheetClip.loop = info->loop;
+    sheetClip = clampClipToSheet(sheetClip, rowCount_, columnCount_, occupiedFrameCount(sheetClip.row));
+
+    int frameColumn = frameIndexAtTime(sheetClip, elapsedSeconds);
+    const int occupied = occupiedFrameCount(sheetClip.row);
+    if (occupied > 0) {
+        frameColumn = std::clamp(frameColumn, 0, occupied - 1);
+    }
+
+    SpriteFrameSample sample{};
+    sample.texture = &texture_;
+    sample.uv = sanitizeSpriteFrameUV(
+        frameUV(sheetClip.row, frameColumn, false), columnCount_, rowCount_);
+    return sample;
 }
 
 int frameIndexAtTime(const SpriteSheetClip& clip, const float elapsedSeconds) noexcept {

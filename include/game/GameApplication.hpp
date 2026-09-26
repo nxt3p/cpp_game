@@ -56,6 +56,20 @@ public:
 
     [[nodiscard]] double lastBenchmarkMedianFrameMs() const;
 
+    // --- ARPG systems introspection (integration tests) ---
+    [[nodiscard]] int playerMana() const;
+    [[nodiscard]] int playerMaxMana() const;
+    [[nodiscard]] int playerCurrentHealthForTest() const;
+    [[nodiscard]] std::size_t activeParticleCount() const;
+    [[nodiscard]] float cameraTrauma() const;
+    [[nodiscard]] int difficultyTierIndex() const;
+    [[nodiscard]] int lootJackpotCount() const;
+    [[nodiscard]] int lootSpinCount() const;
+
+    /// Simulates opening `count` chests in-world (coin insert + reel spin + payout FX) at the player.
+    /// Returns the number of spins that paid a jackpot. Used by the loot telemetry harness.
+    int openVirtualChestsForTest(int count);
+
 private:
     struct Impl;
     Impl* impl_{nullptr};

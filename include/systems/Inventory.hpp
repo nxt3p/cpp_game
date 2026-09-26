@@ -36,6 +36,8 @@ public:
     InventoryAddResult addItemAt(const ItemMetadata& item, int index);
     bool discardAt(int index);
     bool moveItem(int fromIndex, int toIndex);
+    /// Moves into an empty slot, or swaps when both slots hold an item.
+    bool exchangeSlots(int fromIndex, int toIndex);
     bool modifyAt(int index, const std::function<void(ItemMetadata&)>& modifier);
 
     void clearAll() noexcept;

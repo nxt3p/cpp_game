@@ -45,6 +45,8 @@ float LootEngine::rarityProbability(const ItemRarity rarity, const EntityTier ti
         return std::clamp(0.18F + poolFactor * 0.35F + tierBoost, 0.05F, 0.72F);
     case ItemRarity::Legendary:
         return std::clamp(0.02F + poolFactor * 0.25F + tierBoost * 1.5F, 0.01F, 0.38F);
+    case ItemRarity::Unique:
+        return 0.0F;
     }
     return 0.0F;
 }

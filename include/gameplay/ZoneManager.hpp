@@ -57,6 +57,10 @@ public:
     void updatePlainsSimulation(float deltaSeconds, const Vec3& playerPosition);
     void resetMobSimulation();
 
+    [[nodiscard]] std::uint32_t spawnEntity(EntityKind kind, float x, float z, std::uint8_t variant = 0);
+    void nudgeEntity(std::uint32_t entityId, float deltaX, float deltaZ) noexcept;
+    void shiftSceneryX(float deltaX) noexcept;
+
 private:
     void buildTownLayout();
     void buildPlainsLayout(std::uint32_t seed, int depth);

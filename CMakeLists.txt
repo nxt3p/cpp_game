@@ -40,10 +40,12 @@ set(ENGINE_GAMEPLAY_SOURCES
     src/gameplay/ProceduralZoneGenerator.cpp
     src/gameplay/MobController.cpp
     src/gameplay/IsometricCamera.cpp
+    src/gameplay/LaneBattle.cpp
     src/systems/ItemTypes.cpp
     src/systems/Inventory.cpp
     src/systems/Equipment.cpp
     src/systems/LootEngine.cpp
+    src/systems/SlotMachineLoot.cpp
     src/systems/TradeSystem.cpp
     src/systems/CharacterCombat.cpp
     src/systems/ItemStats.cpp
@@ -52,13 +54,17 @@ set(ENGINE_GAMEPLAY_SOURCES
     src/systems/WeaponMastery.cpp
     src/systems/SoulProgression.cpp
     src/systems/Blacksmith.cpp
+    src/systems/SkillBar.cpp
+    src/systems/InventoryDrag.cpp
     src/game/SaveGame.cpp
     src/game/SaveGamePlatform.cpp
+    src/game/CombatFeedback.cpp
     src/ui/OverlayState.cpp
     src/ui/MinimapSystem.cpp
     src/ui/UiHitTest.cpp
     src/ui/UiScale.cpp
     src/ui/UiLayout.cpp
+    src/ui/HudConsoleLayout.cpp
     src/ui/UiTextLayout.cpp
     src/ui/UiInteraction.cpp
 )
@@ -72,7 +78,12 @@ add_library(EngineCore STATIC
     src/render/MobAssets.cpp
     src/render/WorldPropAssets.cpp
     src/render/SpriteSheet.cpp
+    src/render/AtlasMetadata.cpp
+    src/render/GeneratedUiAtlas.cpp
+    src/render/AnimationStateMachine.cpp
     src/render/SpriteRenderer.cpp
+    src/render/ParticleSystem.cpp
+    src/render/ParticleRenderer.cpp
     src/render/UiRenderer.cpp
     src/render/TextRenderer.cpp
 )
@@ -202,6 +213,10 @@ if(ENGINE_BUILD_TESTS)
         tests/test_weapon_mastery.cpp
         tests/test_mobs.cpp
         tests/test_blacksmith.cpp
+        tests/test_loot_telemetry.cpp
+        tests/test_arpg_systems.cpp
+        tests/test_isometric_arpg.cpp
+        tests/test_lane_battle.cpp
     )
     engine_apply_warnings(EngineTests)
     engine_apply_debug_sanitizers(EngineTests)
@@ -240,11 +255,16 @@ if(ENGINE_BUILD_TESTS)
     add_test(NAME engine_mastery_suite COMMAND EngineTests "[mastery]")
     add_test(NAME engine_mobs_suite COMMAND EngineTests "[mobs]")
     add_test(NAME engine_world_props_suite COMMAND EngineTests "[world]")
+    add_test(NAME engine_loot_telemetry_suite COMMAND EngineTests "[telemetry]")
+    add_test(NAME engine_arpg_systems_suite COMMAND EngineTests "[arpg]~[opengl]")
+    add_test(NAME engine_isometric_suite COMMAND EngineTests "[iso]")
+    add_test(NAME engine_lane_suite COMMAND EngineTests "[lane]")
 
     if(NOT ENGINE_WINDOWS_CROSS)
         target_sources(EngineTests PRIVATE
             tests/test_boot.cpp
             tests/test_playthrough.cpp
+            tests/test_arpg_playthrough.cpp
             tests/test_performance.cpp
             src/game/GameApplication.cpp
             src/game/GameDebug.cpp
@@ -266,5 +286,6 @@ if(ENGINE_BUILD_TESTS)
         add_test(NAME engine_boot_suite COMMAND EngineTests "[boot]")
         add_test(NAME engine_playthrough_suite COMMAND EngineTests "[playthrough]")
         add_test(NAME engine_performance_suite COMMAND EngineTests "[performance]")
+        add_test(NAME engine_arpg_playthrough_suite COMMAND EngineTests "[arpg][opengl]")
     endif()
 endif()

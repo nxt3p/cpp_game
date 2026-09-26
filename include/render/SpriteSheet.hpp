@@ -1,9 +1,11 @@
 #pragma once
 
+#include "render/AtlasMetadata.hpp"
 #include "render/Texture.hpp"
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,6 +26,8 @@ enum class SpriteClip : std::uint8_t {
     Idle,
     Walk,
     Attack,
+    Attack2,
+    Cast,
     Hit,
     Death,
     Portrait,
@@ -106,6 +110,15 @@ public:
         SpriteFacing facing,
         float elapsedSeconds) const noexcept;
 
+    void bindDirectionalClips(DirectionalAtlas atlas);
+    [[nodiscard]] bool hasDirectionalClips() const noexcept { return directional_.has_value(); }
+
+    /// `facingIndex` matches SpriteFacing8 (0 = south through 7 = south-east).
+    [[nodiscard]] SpriteFrameSample sampleDirectional(
+        SpriteClip animation,
+        int facingIndex,
+        float elapsedSeconds) const noexcept;
+
     /// Consecutive occupied frames from column 0 on a row (from alpha scan at load).
     [[nodiscard]] int occupiedFrameCount(int row) const noexcept;
 
@@ -118,6 +131,7 @@ private:
     int columnCount_{12};
     int rowCount_{22};
     std::vector<int> occupiedFramesPerRow_{};
+    std::optional<DirectionalAtlas> directional_{};
 };
 
 [[nodiscard]] SpriteSheetClip defaultClassClip(SpriteClip animation, SpriteFacing facing) noexcept;

@@ -199,6 +199,27 @@ EquipmentActionResult Equipment::equipFromInventory(Inventory& inventory, const 
     return {true, "Item equipped"};
 }
 
+EquipmentActionResult Equipment::unequipToIndex(
+    Inventory& inventory,
+    const EquipmentSlotKind slot,
+    const int inventoryIndex) {
+    if (!isSlotOccupied(slot)) {
+        return {false, "Equipment slot is empty"};
+    }
+    if (!inventory.canPlaceAt(inventoryIndex)) {
+        return {false, "That inventory slot is not empty"};
+    }
+
+    ItemMetadata item = *itemAt(slot);
+    const InventoryAddResult placed = inventory.addItemAt(item, inventoryIndex);
+    if (!placed.success) {
+        return {false, placed.message.empty() ? "Could not place item" : placed.message};
+    }
+
+    slots_[static_cast<std::size_t>(slot)].reset();
+    return {true, "Item returned to inventory"};
+}
+
 EquipmentActionResult Equipment::unequipToInventory(Inventory& inventory, const EquipmentSlotKind slot) {
     if (!isSlotOccupied(slot)) {
         return {false, "Equipment slot is empty"};

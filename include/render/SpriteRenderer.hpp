@@ -65,6 +65,18 @@ public:
         float ambientBright,
         const glm::vec4& tint = glm::vec4(1.0F)) const;
 
+    /// Flat ellipse on the ground plane, widened along camera-right. Drawn before the owner's billboard.
+    void drawGroundShadow(
+        const Texture& texture,
+        const glm::vec3& worldPosition,
+        float radius,
+        const glm::mat4& view,
+        const glm::mat4& projection,
+        const glm::vec3& playerLightPosition,
+        float lightRadius,
+        float ambientDark,
+        float ambientBright) const;
+
     /// Silhouette edge outline that follows sprite alpha (draw after the base sprite).
     void drawBillboardOutline(
         const Texture& texture,
