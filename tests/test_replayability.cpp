@@ -30,15 +30,15 @@ TEST_CASE("ItemGenerator rolls equippable categories with affix names", "[replay
 TEST_CASE("RunProgression scales mob difficulty with depth", "[replayability][progression]") {
     systems::RunProgression run(42U);
     const systems::DifficultyModifiers depth1 = run.modifiers();
-    CHECK(depth1.mobHpMultiplier == Catch::Approx(1.35F).margin(1e-3F));
-    CHECK(depth1.mobSpawnBudget == 5);
+    CHECK(depth1.mobHpMultiplier == Catch::Approx(1.7F).margin(1e-3F));
+    CHECK(depth1.mobSpawnBudget == 9);
 
     run.onBossDefeated();
     run.onBossDefeated();
     const systems::DifficultyModifiers depth3 = run.modifiers();
-    CHECK(depth3.mobHpMultiplier == Catch::Approx(2.45F).margin(1e-3F));
+    CHECK(depth3.mobHpMultiplier == Catch::Approx(3.1F).margin(1e-3F));
     CHECK(depth3.itemLevel == 3);
-    CHECK(depth3.mobSpawnBudget == 7);
+    CHECK(depth3.mobSpawnBudget == 11);
     CHECK(run.runSeed() != 42U);
 }
 
@@ -67,10 +67,12 @@ TEST_CASE("Loot loop deposits generated gear into inventory", "[replayability][l
     systems::LootEngine loot(1234U);
     systems::Inventory inventory(6, 4);
     loot.setZoneDepth(2);
-    loot.registerAction(systems::ActionType::MOB_KILL);
-    loot.registerAction(systems::ActionType::CHEST_OPEN);
-
-    const systems::LootDropResult drop = loot.triggerDropCheck(systems::EntityTier::Standard);
+    systems::LootDropResult drop{};
+    for (int attempt = 0; attempt < 40 && !drop.dropped; ++attempt) {
+        loot.registerAction(systems::ActionType::MOB_KILL);
+        loot.registerAction(systems::ActionType::CHEST_OPEN);
+        drop = loot.triggerDropCheck(systems::EntityTier::Standard);
+    }
     REQUIRE(drop.dropped);
     CHECK(drop.item.itemId >= 4000U);
 
@@ -92,9 +94,9 @@ TEST_CASE("CombatSystem applies difficulty multipliers to mob profiles", "[repla
 
     const std::optional<game::MobHealthSnapshot> health = combat.mobHealth(500U);
     REQUIRE(health.has_value());
-    CHECK(health->maxHp == 144);
+    CHECK(health->maxHp == 220);
 
-    const std::optional<game::DamageResult> result = combat.applyDamage(500U, 144);
+    const std::optional<game::DamageResult> result = combat.applyDamage(500U, 220);
     REQUIRE(result.has_value());
     CHECK(result->killed);
     CHECK(result->xpReward == 53);

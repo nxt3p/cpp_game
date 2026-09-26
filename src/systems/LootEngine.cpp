@@ -34,19 +34,63 @@ void LootEngine::setLootTierBonus(const float bonus) noexcept {
     lootTierBonus_ = std::max(0.0F, bonus);
 }
 
-float LootEngine::rarityProbability(const ItemRarity rarity, const EntityTier tier) const {
-    const float poolFactor = std::clamp(static_cast<float>(actionCoinPool_) / 100.0F, 0.0F, 1.0F);
-    const float tierBoost = static_cast<float>(static_cast<int>(tier)) * 0.05F + lootTierBonus_;
+CombatRarityWeights LootEngine::combatRarityWeights(const EntityTier tier) const noexcept {
+    CombatRarityWeights weights{};
+    switch (tier) {
+    case EntityTier::Minor:
+        weights.dropChance = 0.16F;
+        weights.common = 0.84F;
+        weights.magic = 0.11F;
+        weights.rare = 0.038F;
+        weights.legendary = 0.010F;
+        weights.unique = 0.002F;
+        break;
+    case EntityTier::Elite:
+        weights.dropChance = 0.34F;
+        weights.common = 0.58F;
+        weights.magic = 0.22F;
+        weights.rare = 0.12F;
+        weights.legendary = 0.055F;
+        weights.unique = 0.025F;
+        break;
+    case EntityTier::Boss:
+        weights.dropChance = 0.55F;
+        weights.common = 0.42F;
+        weights.magic = 0.26F;
+        weights.rare = 0.18F;
+        weights.legendary = 0.10F;
+        weights.unique = 0.04F;
+        break;
+    case EntityTier::Standard:
+        weights.dropChance = 0.24F;
+        weights.common = 0.72F;
+        weights.magic = 0.17F;
+        weights.rare = 0.075F;
+        weights.legendary = 0.025F;
+        weights.unique = 0.010F;
+        break;
+    }
+    weights.mythical = 0.0F;
+    const float tierBoost = static_cast<float>(static_cast<int>(tier)) * 0.02F + lootTierBonus_ * 0.5F;
+    weights.dropChance = std::clamp(weights.dropChance + tierBoost, 0.05F, 0.7F);
+    return weights;
+}
 
+float LootEngine::rarityProbability(const ItemRarity rarity, const EntityTier tier) const {
+    const CombatRarityWeights weights = combatRarityWeights(tier);
     switch (rarity) {
     case ItemRarity::Common:
-        return std::max(0.12F, 0.75F - poolFactor * 0.45F - tierBoost);
+        return weights.common;
+    case ItemRarity::Magic:
+        return weights.magic;
     case ItemRarity::Rare:
-        return std::clamp(0.18F + poolFactor * 0.35F + tierBoost, 0.05F, 0.72F);
+        return weights.rare;
     case ItemRarity::Legendary:
-        return std::clamp(0.02F + poolFactor * 0.25F + tierBoost * 1.5F, 0.01F, 0.38F);
+        return weights.legendary;
     case ItemRarity::Unique:
-        return 0.0F;
+        return weights.unique;
+    case ItemRarity::Mythical:
+        return weights.mythical;
     }
     return 0.0F;
 }
@@ -54,15 +98,27 @@ float LootEngine::rarityProbability(const ItemRarity rarity, const EntityTier ti
 ItemRarity LootEngine::rollRarity(const EntityTier tier) {
     std::uniform_real_distribution<float> distribution(0.0F, 1.0F);
     const float roll = distribution(rng_);
+    const CombatRarityWeights weights = combatRarityWeights(tier);
 
-    const float legendaryChance = rarityProbability(ItemRarity::Legendary, tier);
-    const float rareChance = rarityProbability(ItemRarity::Rare, tier);
-
-    if (roll < legendaryChance) {
+    float cursor = weights.mythical;
+    if (roll < cursor) {
+        return ItemRarity::Mythical;
+    }
+    cursor += weights.unique;
+    if (roll < cursor) {
+        return ItemRarity::Unique;
+    }
+    cursor += weights.legendary;
+    if (roll < cursor) {
         return ItemRarity::Legendary;
     }
-    if (roll < legendaryChance + rareChance) {
+    cursor += weights.rare;
+    if (roll < cursor) {
         return ItemRarity::Rare;
+    }
+    cursor += weights.magic;
+    if (roll < cursor) {
+        return ItemRarity::Magic;
     }
     return ItemRarity::Common;
 }
@@ -84,12 +140,21 @@ LootDropResult LootEngine::triggerDropCheck(const EntityTier tier) {
         return result;
     }
 
+    const CombatRarityWeights weights = combatRarityWeights(tier);
+    std::uniform_real_distribution<float> dropRoll(0.0F, 1.0F);
+    if (dropRoll(rng_) > weights.dropChance) {
+        actionCoinPool_ = std::max(0, actionCoinPool_ - actionWeight(ActionType::ROCK_CLICK));
+        result.coinPoolAfterRoll = actionCoinPool_;
+        result.resolvedRarity = ItemRarity::Common;
+        return result;
+    }
+
     const ItemRarity rarity = rollRarity(tier);
     result.resolvedRarity = rarity;
     result.item = generateItem(rarity, tier);
     result.dropped = true;
 
-    if (rarity == ItemRarity::Rare || rarity == ItemRarity::Legendary) {
+    if (rarity != ItemRarity::Common) {
         actionCoinPool_ = 0;
         result.poolDrained = true;
     } else if (actionCoinPool_ >= kDrainThresholdCoins) {

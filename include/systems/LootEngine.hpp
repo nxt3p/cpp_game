@@ -17,6 +17,17 @@ struct LootDropResult {
     bool poolDrained{false};
 };
 
+/// Conditional rarity mix once a drop succeeds. Mythical stays at 0 outside the tavern.
+struct CombatRarityWeights {
+    float dropChance{0.0F};
+    float common{0.0F};
+    float magic{0.0F};
+    float rare{0.0F};
+    float legendary{0.0F};
+    float unique{0.0F};
+    float mythical{0.0F};
+};
+
 class LootEngine {
 public:
     explicit LootEngine(std::uint32_t seed = 0xC0FFEE42U);
@@ -31,6 +42,8 @@ public:
 
     LootDropResult triggerDropCheck(EntityTier tier);
     void setSeed(std::uint32_t seed);
+
+    [[nodiscard]] CombatRarityWeights combatRarityWeights(EntityTier tier) const noexcept;
 
 private:
     [[nodiscard]] float rarityProbability(ItemRarity rarity, EntityTier tier) const;

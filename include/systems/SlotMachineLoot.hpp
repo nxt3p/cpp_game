@@ -60,6 +60,28 @@ struct LootSpinResult {
     std::vector<LootPrize> prizes{};
 };
 
+/// Tavern mystery gamble. Mythical is fixed at 1/10000 and is not a combat drop.
+struct TavernGambleOdds {
+    float nothing{0.0F};
+    float gold{0.0F};
+    float common{0.0F};
+    float magic{0.0F};
+    float rare{0.0F};
+    float legendary{0.0F};
+    float unique{0.0F};
+    float mythical{0.0F};
+};
+
+struct TavernGambleResult {
+    bool paid{false};
+    bool grantedItem{false};
+    int goldSpent{0};
+    int goldAwarded{0};
+    ItemRarity rarity{ItemRarity::Common};
+    std::optional<ItemMetadata> item{};
+    std::string message;
+};
+
 /// Aggregate counters for balancing harnesses.
 struct LootTelemetry {
     int spins{0};
@@ -109,6 +131,15 @@ public:
 
     [[nodiscard]] LootReelOdds oddsFor(EntityTier tier) const noexcept;
 
+    /// Combat reels never pay mythical gear.
+    [[nodiscard]] float combatMythicalChance() const noexcept { return 0.0F; }
+
+    [[nodiscard]] TavernGambleOdds tavernOdds() const noexcept;
+    TavernGambleResult gambleTavern(int& playerGold);
+
+    static constexpr float kTavernMythicalChance = 0.0001F;
+    static constexpr int kTavernSpinCost = 25;
+
     LootSpinResult spin(EntityTier tier);
 
     [[nodiscard]] const LootTelemetry& telemetry() const noexcept { return telemetry_; }
@@ -144,6 +175,7 @@ private:
     float lootTierBonus_{0.0F};
     LootCeiling lootCeiling_{LootCeiling::Unique};
     int pityCounter_{0};
+    int tavernDrySpins_{0};
     LootTelemetry telemetry_{};
 };
 

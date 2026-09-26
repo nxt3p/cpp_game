@@ -10,10 +10,10 @@ namespace {
 
 // Base reel weights per source tier. Each row sums to 1.0 before coin/pity adjustments.
 constexpr std::array<LootReelOdds, 4> kBaseOdds = {{
-    /* Minor    */ {0.62F, 0.34F, 0.038F, 0.002F},
-    /* Standard */ {0.33F, 0.47F, 0.188F, 0.012F},
-    /* Elite    */ {0.14F, 0.45F, 0.35F, 0.06F},
-    /* Boss     */ {0.00F, 0.20F, 0.52F, 0.28F},
+    /* Minor    */ {0.84F, 0.135F, 0.022F, 0.003F},
+    /* Standard */ {0.58F, 0.30F, 0.10F, 0.02F},
+    /* Elite    */ {0.32F, 0.40F, 0.22F, 0.06F},
+    /* Boss     */ {0.10F, 0.34F, 0.40F, 0.16F},
 }};
 
 constexpr float kCoinPoolSaturation = 150.0F;
@@ -212,7 +212,7 @@ ItemMetadata SlotMachineLoot::makeMaterial(const EntityTier tier) {
     const int index = rollInt(0, static_cast<int>(std::size(kMaterialNames)) - 1);
     item.itemId = 3200U + static_cast<std::uint32_t>(index);
     item.name = kMaterialNames[index];
-    item.rarity = ItemRarity::Rare;
+    item.rarity = ItemRarity::Magic;
     item.category = ItemCategory::Material;
     item.iconLetter = 'M';
     item.value = (30 + zoneDepth_ * 6) * (1 + static_cast<int>(tier));
@@ -222,7 +222,7 @@ ItemMetadata SlotMachineLoot::makeMaterial(const EntityTier tier) {
 
 ItemMetadata SlotMachineLoot::makeSocketedGear(const EntityTier tier) {
     ItemGenerationContext context{};
-    context.rarity = ItemRarity::Rare;
+    context.rarity = ItemRarity::Magic;
     context.tier = tier;
     context.zoneDepth = zoneDepth_;
     ItemMetadata item = itemGenerator_.generate(context);
@@ -267,10 +267,10 @@ LootPrize SlotMachineLoot::rollCommonPrize(const EntityTier tier) {
     LootPrize prize{};
     prize.tier = LootReelTier::Common;
     const float roll = unit();
-    if (roll < 0.5F) {
+    if (roll < 0.74F) {
         prize.kind = LootPrizeKind::Gold;
-        prize.goldAmount = rollInt(3, 9 + zoneDepth_ * 3) * (1 + static_cast<int>(tier));
-    } else if (roll < 0.8F) {
+        prize.goldAmount = rollInt(4, 12 + zoneDepth_ * 4) * (1 + static_cast<int>(tier));
+    } else if (roll < 0.90F) {
         prize.kind = LootPrizeKind::Consumable;
         prize.item = makeConsumable();
     } else {
@@ -283,12 +283,21 @@ LootPrize SlotMachineLoot::rollCommonPrize(const EntityTier tier) {
 LootPrize SlotMachineLoot::rollMediumPrize(const EntityTier tier) {
     LootPrize prize{};
     prize.tier = LootReelTier::Medium;
-    if (unit() < 0.45F) {
+    const float roll = unit();
+    if (roll < 0.22F) {
         prize.kind = LootPrizeKind::Material;
         prize.item = makeMaterial(tier);
+    } else if (roll < 0.78F) {
+        prize.kind = LootPrizeKind::SocketedGear;
+        prize.item = makeSocketedGear(tier);
     } else {
         prize.kind = LootPrizeKind::SocketedGear;
         prize.item = makeSocketedGear(tier);
+        if (prize.item.has_value()) {
+            prize.item->rarity = ItemRarity::Rare;
+            prize.item->name = std::string("Rare ") + prize.item->name;
+            prize.item->value += 40;
+        }
     }
     return prize;
 }
@@ -296,9 +305,9 @@ LootPrize SlotMachineLoot::rollMediumPrize(const EntityTier tier) {
 LootPrize SlotMachineLoot::rollJackpotPrize(const EntityTier tier) {
     LootPrize prize{};
     prize.tier = LootReelTier::Jackpot;
-    // Uniques are the rarest reel stop: 18% of jackpots (bosses 35%).
+    // Uniques are a thin slice of jackpots. Mythical gear is not on the combat reels.
     const float uniqueChance =
-        lootCeiling_ == LootCeiling::Unique ? (tier == EntityTier::Boss ? 0.35F : 0.18F) : 0.0F;
+        lootCeiling_ == LootCeiling::Unique ? (tier == EntityTier::Boss ? 0.12F : 0.08F) : 0.0F;
     if (unit() < uniqueChance) {
         prize.kind = LootPrizeKind::Unique;
         prize.item = makeUnique(tier);
@@ -416,6 +425,105 @@ LootSpinResult SlotMachineLoot::spin(const EntityTier tier) {
     result.coinPoolAfter = coinPool_;
     result.pityCounterAfter = pityCounter_;
     record(result);
+    return result;
+}
+
+TavernGambleOdds SlotMachineLoot::tavernOdds() const noexcept {
+    TavernGambleOdds odds{};
+    odds.mythical = kTavernMythicalChance;
+    odds.unique = 0.0015F;
+    const float pityLegendary = std::min(0.02F, static_cast<float>(tavernDrySpins_) * 0.000002F);
+    odds.legendary = 0.004F + pityLegendary;
+    odds.rare = 0.018F;
+    odds.magic = 0.070F;
+    odds.common = 0.160F;
+    odds.gold = 0.4464F;
+    odds.nothing = 1.0F - (odds.mythical + odds.unique + odds.legendary + odds.rare + odds.magic + odds.common + odds.gold);
+    if (odds.nothing < 0.0F) {
+        odds.gold = std::max(0.0F, odds.gold + odds.nothing);
+        odds.nothing = 0.0F;
+    }
+    return odds;
+}
+
+TavernGambleResult SlotMachineLoot::gambleTavern(int& playerGold) {
+    TavernGambleResult result{};
+    result.goldSpent = kTavernSpinCost;
+    if (playerGold < kTavernSpinCost) {
+        result.message = "The barkeep wants " + std::to_string(kTavernSpinCost) + " gold.";
+        return result;
+    }
+
+    playerGold -= kTavernSpinCost;
+    result.paid = true;
+
+    const TavernGambleOdds odds = tavernOdds();
+    const float roll = unit();
+    float cursor = 0.0F;
+    auto hit = [&](const float chance) {
+        cursor += chance;
+        return roll < cursor;
+    };
+
+    auto finishItem = [&](ItemMetadata item, const char* banner, const bool resetPity) {
+        result.grantedItem = true;
+        result.rarity = item.rarity;
+        result.message = std::string(banner) + item.name;
+        result.item = std::move(item);
+        if (resetPity) {
+            tavernDrySpins_ = 0;
+        } else {
+            ++tavernDrySpins_;
+        }
+    };
+
+    if (hit(odds.mythical)) {
+        ItemMetadata item = makeUnique(EntityTier::Boss);
+        item.rarity = ItemRarity::Mythical;
+        item.name = std::string("Mythic ") + item.name;
+        item.value += 2000;
+        item.bonuses.damage += 8;
+        item.bonuses.maxHealth += 40;
+        finishItem(std::move(item), "MYTHICAL! ", true);
+        return result;
+    }
+    if (hit(odds.unique)) {
+        finishItem(makeUnique(EntityTier::Elite), "Unique! ", true);
+        return result;
+    }
+    if (hit(odds.legendary)) {
+        finishItem(makeLegendary(EntityTier::Elite), "Legendary! ", true);
+        return result;
+    }
+    if (hit(odds.rare)) {
+        ItemMetadata item = makeSocketedGear(EntityTier::Standard);
+        item.rarity = ItemRarity::Rare;
+        item.name = std::string("Rare ") + item.name;
+        finishItem(std::move(item), "", false);
+        return result;
+    }
+    if (hit(odds.magic)) {
+        finishItem(makeSocketedGear(EntityTier::Minor), "", false);
+        return result;
+    }
+    if (hit(odds.common)) {
+        if (unit() < 0.5F) {
+            finishItem(makeConsumable(), "", false);
+        } else {
+            finishItem(makeJunk(), "", false);
+        }
+        return result;
+    }
+    if (hit(odds.gold)) {
+        result.goldAwarded = rollInt(8, 20 + zoneDepth_ * 4);
+        playerGold += result.goldAwarded;
+        result.message = "+" + std::to_string(result.goldAwarded) + " gold";
+        ++tavernDrySpins_;
+        return result;
+    }
+
+    result.message = "The reels come up empty.";
+    ++tavernDrySpins_;
     return result;
 }
 

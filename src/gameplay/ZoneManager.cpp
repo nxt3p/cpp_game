@@ -108,6 +108,10 @@ void ZoneManager::updatePlainsSimulation(const float deltaSeconds, const Vec3& p
     }
 }
 
+bool ZoneManager::allowsFreeMovement() const noexcept {
+    return activeZone_ != WorldZone::TOWN;
+}
+
 bool ZoneManager::isInsideBlacksmithRadius(const Vec3& position) const noexcept {
     const float dx = position.x - blacksmith_.position().x;
     const float dz = position.z - blacksmith_.position().z;

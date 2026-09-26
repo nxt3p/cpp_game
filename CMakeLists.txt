@@ -54,6 +54,8 @@ set(ENGINE_GAMEPLAY_SOURCES
     src/systems/WeaponMastery.cpp
     src/systems/SoulProgression.cpp
     src/systems/Blacksmith.cpp
+    src/systems/TownHub.cpp
+    src/render/TownBackdrop.cpp
     src/systems/SkillBar.cpp
     src/systems/InventoryDrag.cpp
     src/game/SaveGame.cpp
@@ -218,6 +220,7 @@ if(ENGINE_BUILD_TESTS)
         tests/test_arpg_systems.cpp
         tests/test_isometric_arpg.cpp
         tests/test_lane_battle.cpp
+        tests/test_town_overhaul.cpp
     )
     engine_apply_warnings(EngineTests)
     engine_apply_debug_sanitizers(EngineTests)
@@ -260,6 +263,7 @@ if(ENGINE_BUILD_TESTS)
     add_test(NAME engine_arpg_systems_suite COMMAND EngineTests "[arpg]~[opengl]")
     add_test(NAME engine_isometric_suite COMMAND EngineTests "[iso]")
     add_test(NAME engine_lane_suite COMMAND EngineTests "[lane]")
+    add_test(NAME engine_town_suite COMMAND EngineTests "[town]")
 
     if(NOT ENGINE_WINDOWS_CROSS)
         target_sources(EngineTests PRIVATE

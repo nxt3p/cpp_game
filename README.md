@@ -21,10 +21,10 @@ The same gameplay code runs natively (Linux/WSL/Windows) and in the browser via 
 ## Features
 
 - **Front-end flow** — Main menu, class select (Warrior / Ranger / Mage), settings, pause menu
-- **Two zones** — Town hub and Plains combat area with procedural scenery and mob spawns
+- **Two zones** — Static illustrated town (clickable ruins that gold and levels repair) and Plains combat with denser, tougher mobs
 - **Combat** — Click-to-move, target mobs, melee attacks, critical hits, screen shake + hit-stop, floating damage / crit text, boss encounters
 - **Skills** — Quick-cast hotkey bar (Power Strike, Whirlwind, Heal, Dash, and four more) with mana pool and cooldowns; belt potions on **Q**. **C** opens a two-panel Abilities window (spellbook + soul talent nodes)
-- **Slot-machine loot** — Every action inserts coins into a 3-tier reel (Common / Medium / Jackpot) with pity protection; jackpots fire a light pillar, screen flash and Legendary / Unique drops
+- **Slot-machine loot** — Kills and chests spin a reel, but early drops are scarce. Rarity runs Common, Magic (blue), Rare (yellow), Legendary (brown), Unique (green). Mythical (magenta) is a tavern gamble at about 1 in 10,000, not a combat drop
 - **Progression** — Soul-based stat upgrades in Town, weapon mastery, depth scaling, Normal / Nightmare / Hell difficulty tiers unlocked by boss kills
 - **Dark-fantasy presentation** — Torch-lit shading with cool shadows and fog, particle system (hit sparks, death bursts, spell flashes, ambient dust), 8-way sprite facing with hit / death animation states
 - **Deskrawl-style HUD** — Clustered health / mana globes, level badge, skill quick-slots with cooldown sweeps, potion count, bottom-right menu icons, XP bar, minimap overlay
@@ -127,14 +127,28 @@ Output: `build-win-x86_64/GameEngine.exe` with assets staged beside the executab
 
 | Input | Action |
 |-------|--------|
-| Mouse click | Menu buttons, move, attack, interact, UI |
+| Mouse click | Menu buttons, town buildings, move on the road, attack, interact, UI |
 | **C** | Abilities (spells and soul talents) |
 | **I** | Character paper-doll and inventory |
 | Bottom-right icons | **C** abilities, **I** inventory, **M** map, **S** settings, **P** pause |
-| **E** | Blacksmith trade (Town, near forge) |
+| **E** | Blacksmith trade once the forge is repaired |
 | **1 – 4** | Quick-cast skill slots (Power Strike, Whirlwind, Heal, Dash) |
 | **Q** | Drink first belt potion |
 | **Esc** | Pause menu / close overlays |
+
+### Town progression
+
+Town is a static scene. The hero does not walk between buildings.
+
+Buildings start in ruins. Click one to spend gold once your level is high enough:
+
+| Building | Level | Gold | Unlocks |
+|----------|------:|-----:|---------|
+| Blacksmith | 1 | 40 | Sell gear and forge services |
+| Chapel | 2 | 70 | Rest (12 gold tithe restores health and mana) |
+| Tavern | 3 | 140 | Mystery gamble, 25 gold a spin |
+
+Kills pay gold and experience directly, so the first repairs come from fighting rather than from a pile of items. **The Road** (or **M**) opens the campaign map. Mythical items are reserved for the tavern reel at 1/10000.
 
 ### Pause menu
 

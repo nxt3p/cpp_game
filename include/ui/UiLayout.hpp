@@ -131,6 +131,24 @@ struct HudChromeLayout {
     Rect messageStrip{};
 };
 
+/// Static town illustration hotspots. Buildings do not overlap each other or the road.
+struct TownSceneLayout {
+    Rect blacksmith{};
+    Rect tavern{};
+    Rect healer{};
+    Rect road{};
+    Rect notice{};
+    Rect servicePanel{};
+    Rect serviceTitle{};
+    Rect serviceBody{};
+    Rect serviceAction{};
+    Rect serviceClose{};
+};
+
+[[nodiscard]] TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept;
+
+[[nodiscard]] Rect townBuildingRect(const TownSceneLayout& layout, int buildingIndex) noexcept;
+
 enum class SettingsRowKind : std::uint8_t { Cycle, Slider };
 
 struct SettingsRowLayout {

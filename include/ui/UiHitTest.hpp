@@ -11,4 +11,6 @@ struct Rect {
     [[nodiscard]] bool contains(float px, float py) const noexcept;
 };
 
+[[nodiscard]] bool rectsOverlap(const Rect& a, const Rect& b) noexcept;
+
 } // namespace ui

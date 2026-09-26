@@ -37,6 +37,7 @@ struct SaveProgressionData {
     std::uint32_t lootRngSeed{0xC0FFEE42U};
     int lootPityCounter{0};
     int difficultyTier{0};
+    int townRepairMask{0};
 };
 
 struct SaveMobHealthEntry {

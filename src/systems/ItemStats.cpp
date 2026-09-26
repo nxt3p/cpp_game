@@ -94,12 +94,16 @@ void applyItemDefinition(ItemMetadata& item) {
         if (item.iconLetter == '?') {
             item.iconLetter = item.name.empty() ? '?' : item.name.front();
         }
-        if (item.rarity == ItemRarity::Rare) {
+        if (item.rarity == ItemRarity::Magic) {
             item.bonuses = {2, 2, 1, 10, 0.05F, 1, 2.0F};
+        } else if (item.rarity == ItemRarity::Rare) {
+            item.bonuses = {3, 2, 2, 16, 0.08F, 2, 3.0F};
         } else if (item.rarity == ItemRarity::Legendary) {
             item.bonuses = {4, 3, 2, 20, 0.1F, 3, 4.0F};
         } else if (item.rarity == ItemRarity::Unique) {
             item.bonuses = {6, 5, 4, 40, 0.15F, 6, 6.0F};
+        } else if (item.rarity == ItemRarity::Mythical) {
+            item.bonuses = {8, 7, 6, 60, 0.22F, 9, 8.0F};
         } else {
             item.bonuses = {1, 0, 0, 0, 0.0F, 0, 0.0F};
         }

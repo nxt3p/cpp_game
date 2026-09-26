@@ -87,8 +87,8 @@ GeneratedZoneLayout generatePlainsLayout(const ZoneLayoutSpec& spec) noexcept {
         layout.props.push_back(PropSpawn{EntityKind::ENV_CHEST, point.x, point.z, 0});
     }
 
-    const int mobBudget = std::min(12, 4 + spec.depth);
-    const float mobSpacing = 14.0F;
+    const int mobBudget = std::min(26, 9 + spec.depth * 2);
+    const float mobSpacing = 9.0F;
     for (int attempt = 0; attempt < mobBudget * 6 && static_cast<int>(layout.mobSpawns.size()) < mobBudget;
          ++attempt) {
         const Vec3 candidate = samplePoint(rng, bounds, margin + 4.0F);

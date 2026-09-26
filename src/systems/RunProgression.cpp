@@ -26,20 +26,20 @@ DifficultyTierModifiers difficultyTierModifiers(const DifficultyTier tier) noexc
     case DifficultyTier::Normal:
         break;
     case DifficultyTier::Nightmare:
-        mods.hpMultiplier = 1.9F;
-        mods.damageMultiplier = 1.6F;
+        mods.hpMultiplier = 2.2F;
+        mods.damageMultiplier = 1.85F;
         mods.xpMultiplier = 1.75F;
-        mods.lootTierBonus = 0.06F;
+        mods.lootTierBonus = 0.05F;
         mods.itemLevelBonus = 3;
-        mods.spawnBudgetBonus = 2;
+        mods.spawnBudgetBonus = 3;
         break;
     case DifficultyTier::Hell:
-        mods.hpMultiplier = 3.2F;
-        mods.damageMultiplier = 2.4F;
+        mods.hpMultiplier = 3.8F;
+        mods.damageMultiplier = 2.8F;
         mods.xpMultiplier = 2.75F;
-        mods.lootTierBonus = 0.14F;
+        mods.lootTierBonus = 0.1F;
         mods.itemLevelBonus = 7;
-        mods.spawnBudgetBonus = 4;
+        mods.spawnBudgetBonus = 6;
         break;
     }
     return mods;
@@ -51,12 +51,12 @@ DifficultyModifiers RunProgression::modifiers() const noexcept {
     const DifficultyTierModifiers tierMods = difficultyTierModifiers(tier_);
     DifficultyModifiers mods{};
     const float depthFactor = static_cast<float>(std::max(1, depth_) - 1);
-    mods.mobHpMultiplier = (1.35F + depthFactor * 0.55F) * tierMods.hpMultiplier;
+    mods.mobHpMultiplier = (1.7F + depthFactor * 0.7F) * tierMods.hpMultiplier;
     mods.mobXpMultiplier = (1.0F + depthFactor * 0.35F) * tierMods.xpMultiplier;
-    mods.mobDamageMultiplier = (1.15F + depthFactor * 0.4F) * tierMods.damageMultiplier;
-    mods.lootTierBonus = depthFactor * 0.04F + tierMods.lootTierBonus;
+    mods.mobDamageMultiplier = (1.45F + depthFactor * 0.5F) * tierMods.damageMultiplier;
+    mods.lootTierBonus = depthFactor * 0.03F + tierMods.lootTierBonus;
     mods.itemLevel = depth_ + tierMods.itemLevelBonus;
-    mods.mobSpawnBudget = std::min(16, 4 + depth_ + tierMods.spawnBudgetBonus);
+    mods.mobSpawnBudget = std::min(24, 8 + depth_ + tierMods.spawnBudgetBonus);
     return mods;
 }
 

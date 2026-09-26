@@ -36,6 +36,8 @@ public:
 
     ZoneTransitionResult updatePlayerPosition(const Vec3& position);
     [[nodiscard]] bool isInsideBlacksmithRadius(const Vec3& position) const noexcept;
+    /// Town is a static scene. Free walking is only available on the plains and roads.
+    [[nodiscard]] bool allowsFreeMovement() const noexcept;
 
     void respawnPlainsContent();
     void respawnPlainsContent(std::uint32_t seed, int depth);

@@ -115,17 +115,32 @@ ItemStatBonuses ItemGenerator::rollBonuses(
     float speedScale = 0.05F;
     float lightScale = 1.0F;
     switch (rarity) {
-    case ItemRarity::Rare:
+    case ItemRarity::Magic:
         rarityScale = 2;
-        speedScale = 0.1F;
-        lightScale = 2.5F;
+        speedScale = 0.08F;
+        lightScale = 2.0F;
+        break;
+    case ItemRarity::Rare:
+        rarityScale = 3;
+        speedScale = 0.12F;
+        lightScale = 3.0F;
         break;
     case ItemRarity::Legendary:
         rarityScale = 4;
         speedScale = 0.18F;
         lightScale = 5.0F;
         break;
-    default:
+    case ItemRarity::Unique:
+        rarityScale = 5;
+        speedScale = 0.22F;
+        lightScale = 6.0F;
+        break;
+    case ItemRarity::Mythical:
+        rarityScale = 7;
+        speedScale = 0.28F;
+        lightScale = 8.0F;
+        break;
+    case ItemRarity::Common:
         break;
     }
 
@@ -245,8 +260,15 @@ std::string ItemGenerator::buildName(
 
     std::ostringstream name;
     name << prefix << ' ' << bases[baseIndex];
+    if (rarity == ItemRarity::Mythical) {
+        return std::string("Mythic ") + bases[baseIndex];
+    }
     if (rarity == ItemRarity::Legendary) {
         name << " of Legends";
+    } else if (rarity == ItemRarity::Magic) {
+        return prefix + ' ' + bases[baseIndex];
+    } else if (rarity == ItemRarity::Common) {
+        return bases[baseIndex];
     } else {
         name << ' ' << suffix;
     }

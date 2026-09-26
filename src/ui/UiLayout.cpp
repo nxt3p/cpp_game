@@ -91,7 +91,7 @@ struct SlotGridCell {
 constexpr SlotGridCell kPaperDollSlotCells[15] = {
     {1, 0}, // Head
     {0, 0}, // Shoulders
-    {1, 2}, // Chest
+    {1, 5}, // Chest — kept off the portrait, which occupies column 1 rows 1-2
     {0, 2}, // Hands
     {1, 3}, // Waist
     {0, 3}, // Legs
@@ -157,7 +157,29 @@ InventoryPaperDollLayout computeInventoryPaperDollLayout(
     constexpr float kGapPerSlot = 6.0F / 50.0F;
     const float perSlot = slotRows + gapRows * kGapPerSlot;
     const float fittedSlot = (maxPanelHeight - fixedChrome) / std::max(perSlot, 1.0F);
-    layout.slotSize = std::clamp(fittedSlot, scale.dim(28.0F), scale.dim(50.0F));
+    const float slotFloor = scale.dim(28.0F) * scale.touchBoost;
+    const float slotCeil = scale.dim(50.0F) * std::max(1.0F, scale.touchBoost);
+    layout.slotSize = std::clamp(fittedSlot, slotFloor, slotCeil);
+    if (scale.platform != UiPlatformKind::Desktop) {
+        layout.slotSize = std::max(layout.slotSize, std::min(scale.minTouchTarget(), fittedSlot));
+    }
+
+    const float maxPanelWidth =
+        std::max(scale.dim(180.0F), static_cast<float>(scale.width) - scale.dim(8.0F));
+    const auto panelWidthForSlot = [&](const float slot) {
+        const float gap = slot * kGapPerSlot;
+        const float bagWidthForSlot =
+            static_cast<float>(bagColumns) * slot + gap * static_cast<float>(std::max(bagColumns - 1, 0));
+        const float dollGrid = slot * 3.0F + gap * 2.0F;
+        const float dollArea = std::max(dollGrid, bagWidthForSlot);
+        return dollArea + layout.statsSidebarWidth + layout.padding * 3.0F;
+    };
+    for (int guard = 0; guard < 12 && panelWidthForSlot(layout.slotSize) > maxPanelWidth; ++guard) {
+        layout.slotSize *= 0.92F;
+    }
+    if (layout.slotSize > fittedSlot && panelWidthForSlot(fittedSlot) <= maxPanelWidth) {
+        layout.slotSize = std::min(layout.slotSize, fittedSlot);
+    }
     layout.slotGap = layout.slotSize * kGapPerSlot;
     layout.dollBandHeight =
         static_cast<float>(kDollRows) * layout.slotSize +
@@ -554,10 +576,6 @@ SettingsPanelLayout computeSettingsPanelLayout(const UiScale& scale) noexcept {
 
 namespace {
 
-[[nodiscard]] bool rectsOverlap(const Rect& a, const Rect& b) noexcept {
-    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-}
-
 void nudgeAwayFrom(Rect& box, const Rect& avoid, const float gap, const float margin, const int screenWidth) noexcept {
     if (!rectsOverlap(box, avoid)) {
         return;
@@ -713,6 +731,81 @@ HudChromeLayout computeHudChromeLayout(const UiScale& scale) noexcept {
     layout.statusHud = console.panel;
     layout.messageStrip = console.messageStrip;
     return layout;
+}
+
+TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept {
+    TownSceneLayout layout{};
+    const float width = static_cast<float>(std::max(scale.width, 1));
+    const float height = static_cast<float>(std::max(scale.height, 1));
+    const float margin = std::max(8.0F, width * 0.018F);
+    const float gap = std::max(6.0F, width * 0.012F);
+    const float top = std::clamp(height * 0.08F, 24.0F, 72.0F);
+    const float consoleBand = std::min(scale.dim(kReferenceHudConsoleHeight), height * 0.34F);
+    const float consoleTop = height - consoleBand;
+    const float roadH = std::clamp(std::max(36.0F, scale.minTouchTarget()), 36.0F, 72.0F);
+    const float usableBottom = std::max(top + roadH + gap + 48.0F, std::min(consoleTop - 6.0F, height - 4.0F));
+    const float buildingW = std::max(1.0F, (width - margin * 2.0F - gap * 2.0F) / 3.0F);
+    float buildingH = usableBottom - top - gap - roadH;
+    if (buildingH < 48.0F) {
+        buildingH = std::max(32.0F, usableBottom - top - gap - 32.0F);
+    }
+
+    const float buildingY = top;
+    layout.blacksmith = {margin, buildingY, buildingW, buildingH};
+    layout.healer = {margin + buildingW + gap, buildingY, buildingW, buildingH};
+    layout.tavern = {margin + (buildingW + gap) * 2.0F, buildingY, buildingW, buildingH};
+
+    const float roadW = std::min(width - margin * 2.0F, std::max(buildingW, scale.minTouchTarget() * 3.0F));
+    layout.road = {(width - roadW) * 0.5F, buildingY + buildingH + gap, roadW, roadH};
+    layout.notice = {margin, 6.0F, std::max(1.0F, width - margin * 2.0F), std::max(16.0F, top - 12.0F)};
+
+    const float panelW = std::min(460.0F, std::max(160.0F, width - margin * 2.0F));
+    const float panelH = std::min(260.0F, std::max(140.0F, height * 0.4F));
+    layout.servicePanel = {(width - panelW) * 0.5F, std::max(8.0F, height * 0.22F), panelW, panelH};
+    const float inset = 12.0F;
+    layout.serviceTitle = {
+        layout.servicePanel.x + inset,
+        layout.servicePanel.y + 10.0F,
+        std::max(1.0F, layout.servicePanel.width - inset * 2.0F),
+        26.0F};
+    const float buttonGap = 10.0F;
+    const float innerW = std::max(1.0F, layout.servicePanel.width - inset * 2.0F);
+    const float buttonH = std::min(std::max(36.0F, scale.minTouchTarget()), layout.servicePanel.height * 0.34F);
+    const float actionW = std::max(48.0F, (innerW - buttonGap) * 0.62F);
+    const float closeW = std::max(36.0F, innerW - buttonGap - actionW);
+    layout.serviceAction = {
+        layout.servicePanel.x + inset,
+        layout.servicePanel.y + layout.servicePanel.height - buttonH - 12.0F,
+        std::min(actionW, innerW),
+        buttonH};
+    layout.serviceClose = {
+        layout.serviceAction.x + layout.serviceAction.width + buttonGap,
+        layout.serviceAction.y,
+        closeW,
+        buttonH};
+    if (layout.serviceClose.x + layout.serviceClose.width > layout.servicePanel.x + layout.servicePanel.width - inset) {
+        layout.serviceClose.width =
+            std::max(1.0F, layout.servicePanel.x + layout.servicePanel.width - inset - layout.serviceClose.x);
+    }
+    layout.serviceBody = {
+        layout.serviceTitle.x,
+        layout.serviceTitle.y + layout.serviceTitle.height + 4.0F,
+        layout.serviceTitle.width,
+        std::max(12.0F, layout.serviceAction.y - (layout.serviceTitle.y + layout.serviceTitle.height) - 8.0F)};
+    return layout;
+}
+
+Rect townBuildingRect(const TownSceneLayout& layout, const int buildingIndex) noexcept {
+    switch (buildingIndex) {
+    case 0:
+        return layout.blacksmith;
+    case 1:
+        return layout.tavern;
+    case 2:
+        return layout.healer;
+    default:
+        return {};
+    }
 }
 
 } // namespace ui

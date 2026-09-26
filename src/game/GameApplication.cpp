@@ -23,6 +23,7 @@
 #include "render/SpriteRenderer.hpp"
 #include "render/SpriteSheet.hpp"
 #include "render/TextRenderer.hpp"
+#include "render/TownBackdrop.hpp"
 #include "render/UiAssets.hpp"
 #include "render/UiRenderer.hpp"
 #include "render/WorldPropAssets.hpp"
@@ -37,6 +38,7 @@
 #include "systems/LootEngine.hpp"
 #include "systems/SlotMachineLoot.hpp"
 #include "systems/Blacksmith.hpp"
+#include "systems/TownHub.hpp"
 #include "systems/TradeSystem.hpp"
 #include "ui/LootPresentation.hpp"
 #include "ui/MinimapSystem.hpp"
@@ -214,10 +216,6 @@ bool worldToScreen(
     outX = (normalizedDevice.x * 0.5F + 0.5F) * static_cast<float>(screenWidth);
     outY = (1.0F - (normalizedDevice.y * 0.5F + 0.5F)) * static_cast<float>(screenHeight);
     return true;
-}
-
-[[nodiscard]] bool rectsOverlap(const ui::Rect& a, const ui::Rect& b) noexcept {
-    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
 struct MobScreenPlate {
@@ -413,6 +411,12 @@ struct GameApplication::Impl {
     bool laneActive_{false};
     int selectedNode_{0};
     bool nodeMapOpen_{false};
+    systems::TownHub townHub_{};
+    bool tavernPanelOpen_{false};
+    bool healerPanelOpen_{false};
+    std::string townNotice_{};
+    render::Texture townBackdrop_{};
+    bool townBackdropReady_{false};
     std::unordered_set<std::uint32_t> laneMobIds_{};
     std::unordered_set<std::uint32_t> eliteIds_{};
     render::Texture groundShadow_{};
@@ -798,7 +802,7 @@ struct GameApplication::Impl {
         playerInventory.addItem(
             {201U,
              "Scout Charm",
-             systems::ItemRarity::Rare,
+             systems::ItemRarity::Magic,
              30,
              systems::ItemCategory::Charm,
              'C',
@@ -807,7 +811,7 @@ struct GameApplication::Impl {
         vendorInventory.addItem(
             {301U,
              "Forged Sword",
-             systems::ItemRarity::Rare,
+             systems::ItemRarity::Magic,
              80,
              systems::ItemCategory::Weapon,
              'S',
@@ -815,7 +819,7 @@ struct GameApplication::Impl {
         vendorInventory.addItem(
             {302U,
              "Plate Vest",
-             systems::ItemRarity::Rare,
+             systems::ItemRarity::Magic,
              120,
              systems::ItemCategory::Chest,
              'A',
@@ -823,7 +827,7 @@ struct GameApplication::Impl {
         vendorInventory.addItem(
             {401U,
              "Dragon Scale",
-             systems::ItemRarity::Legendary,
+             systems::ItemRarity::Rare,
              500,
              systems::ItemCategory::Cloak,
              'D',
@@ -851,7 +855,7 @@ struct GameApplication::Impl {
         } else if (screen == AppScreen::SETTINGS) {
             logHelp("Settings placeholder. Click Back to return.");
         } else if (screen == AppScreen::IN_GAME) {
-            hudMessage = "Town | M campaign map | I gear | C abilities | Q potion | Esc";
+            hudMessage = "Town is still in ruins. Fight for gold and levels, then repair the buildings.";
             logHelp(hudMessage);
         }
     }
@@ -937,6 +941,7 @@ struct GameApplication::Impl {
         snapshot.progression.lootRngSeed = lootEngine.rngSeed();
         snapshot.progression.lootPityCounter = lootEngine.pityCounter();
         snapshot.progression.difficultyTier = static_cast<int>(runProgression_.tier());
+        snapshot.progression.townRepairMask = townHub_.repairMask();
 
         snapshot.world.activeZone = zoneManager.activeZone();
         snapshot.world.playerPosition = zoneManager.player().position();
@@ -1009,6 +1014,7 @@ struct GameApplication::Impl {
         lootEngine.setSeed(snapshot.progression.lootRngSeed);
         lootEngine.setCoinPool(snapshot.progression.lootCoinPool);
         lootEngine.setPityCounter(snapshot.progression.lootPityCounter);
+        townHub_.applyRepairMask(snapshot.progression.townRepairMask);
         syncRunDifficulty();
         refreshManaPool();
         skillBar_.restoreMana();
@@ -3116,13 +3122,15 @@ struct GameApplication::Impl {
         float iconBorder[4]{};
         rarityColors(item.rarity, iconFill, iconBorder);
 
-        const float iconPad = 5.0F;
-        uiRenderer.drawFilledRect(
-            slot.x + iconPad,
-            slot.y + iconPad,
-            slot.width - iconPad * 2.0F,
-            slot.height - iconPad * 2.0F,
-            iconFill);
+        const float iconPad = 4.0F;
+        if (!hasItemIcon(item)) {
+            uiRenderer.drawFilledRect(
+                slot.x + iconPad,
+                slot.y + iconPad,
+                slot.width - iconPad * 2.0F,
+                slot.height - iconPad * 2.0F,
+                iconFill);
+        }
         uiRenderer.drawOutlineRect(
             slot.x + iconPad,
             slot.y + iconPad,
@@ -3446,6 +3454,8 @@ struct GameApplication::Impl {
         lane_.start(selectedNode_, seed);
         laneActive_ = true;
         nodeMapOpen_ = false;
+        tavernPanelOpen_ = false;
+        healerPanelOpen_ = false;
         playerPosition = glm::vec3(0.0F, 0.0F, kLaneCenterZ);
         zoneManager.updatePlayerPosition(toVec3(playerPosition));
         playerPosition = toGlm(zoneManager.player().position());
@@ -3734,6 +3744,244 @@ struct GameApplication::Impl {
         }
     }
 
+    void syncPlayerGold(const int gold) {
+        zoneManager.player().setGold(gold);
+        tradeSystem.setPlayerGold(zoneManager.player().gold());
+    }
+
+    void openTownBlacksmith() {
+        tavernPanelOpen_ = false;
+        healerPanelOpen_ = false;
+        nodeMapOpen_ = false;
+        tradeSystem.setPlayerGold(zoneManager.player().gold());
+        stateManager.enterTrading();
+        hudMessage = "Blacksmith — click items to sell, forge services below";
+        townNotice_ = hudMessage;
+        logInfo(hudMessage);
+    }
+
+    void ensureTownBackdrop() {
+        if (townBackdropReady_) {
+            return;
+        }
+        const render::TownPixelBuffer image = render::paintTownBackdrop(320, 180);
+        std::vector<std::uint8_t> upright(image.rgba.size());
+        const int stride = image.width * 4;
+        for (int y = 0; y < image.height; ++y) {
+            const int src = y * stride;
+            const int dst = (image.height - 1 - y) * stride;
+            std::copy(image.rgba.begin() + src, image.rgba.begin() + src + stride, upright.begin() + dst);
+        }
+        townBackdropReady_ = townBackdrop_.uploadRgba(image.width, image.height, upright.data());
+    }
+
+    void spinTavern() {
+        int gold = tradeSystem.playerGold();
+        const systems::TavernGambleResult spin = lootEngine.gambleTavern(gold);
+        syncPlayerGold(gold);
+        if (spin.item.has_value()) {
+            if (!playerInventory.addItem(*spin.item).success) {
+                townNotice_ = "Bag full — " + spin.item->name + " was lost.";
+            } else {
+                townNotice_ = spin.message;
+            }
+        } else {
+            townNotice_ = spin.message;
+        }
+        hudMessage = townNotice_;
+        logInfo(hudMessage);
+    }
+
+    void restAtChapel() {
+        int gold = tradeSystem.playerGold();
+        const int cost = systems::healerTitheGold();
+        if (gold < cost) {
+            townNotice_ = "The chapel asks " + std::to_string(cost) + " gold.";
+            hudMessage = townNotice_;
+            return;
+        }
+        gold -= cost;
+        syncPlayerGold(gold);
+        playerCurrentHealth_ = std::max(1, effectiveCharacterStats().maxHealth);
+        skillBar_.restoreMana();
+        townNotice_ = "You rest. Health and mana restored.";
+        hudMessage = townNotice_;
+        logInfo(hudMessage);
+    }
+
+    void handleTownClick(const float mouseX, const float mouseY) {
+        const ui::TownSceneLayout layout = ui::computeTownSceneLayout(currentUiScale());
+        if (tavernPanelOpen_ || healerPanelOpen_) {
+            if (layout.serviceClose.contains(mouseX, mouseY)) {
+                tavernPanelOpen_ = false;
+                healerPanelOpen_ = false;
+                return;
+            }
+            if (layout.serviceAction.contains(mouseX, mouseY)) {
+                if (tavernPanelOpen_) {
+                    spinTavern();
+                } else {
+                    restAtChapel();
+                }
+                return;
+            }
+            if (layout.servicePanel.contains(mouseX, mouseY)) {
+                return;
+            }
+            tavernPanelOpen_ = false;
+            healerPanelOpen_ = false;
+        }
+
+        if (layout.road.contains(mouseX, mouseY)) {
+            overlayState.showInventoryOverlay(false);
+            overlayState.showCharacterScreen(false);
+            if (stateManager.currentState() == gameplay::GameState::CHARACTER_MENU) {
+                stateManager.closeCharacterMenu();
+            }
+            tavernPanelOpen_ = false;
+            healerPanelOpen_ = false;
+            nodeMapOpen_ = true;
+            townNotice_ = "Choose a road. Gold and levels repair the town.";
+            hudMessage = townNotice_;
+            return;
+        }
+
+        const ui::Rect hotspots[] = {layout.blacksmith, layout.tavern, layout.healer};
+        const systems::TownBuilding buildings[] = {
+            systems::TownBuilding::Blacksmith,
+            systems::TownBuilding::Tavern,
+            systems::TownBuilding::Healer};
+        for (int index = 0; index < 3; ++index) {
+            if (!hotspots[index].contains(mouseX, mouseY)) {
+                continue;
+            }
+            const systems::TownBuilding building = buildings[index];
+            if (!townHub_.isRepaired(building)) {
+                int gold = tradeSystem.playerGold();
+                const systems::TownRepairResult result =
+                    townHub_.tryRepair(building, gold, overlayState.characterScreen().level);
+                syncPlayerGold(gold);
+                townNotice_ = systems::TownHub::repairMessage(building, result);
+                hudMessage = townNotice_;
+                logInfo(hudMessage);
+                return;
+            }
+            if (building == systems::TownBuilding::Blacksmith) {
+                openTownBlacksmith();
+                return;
+            }
+            if (building == systems::TownBuilding::Tavern) {
+                healerPanelOpen_ = false;
+                tavernPanelOpen_ = true;
+                townNotice_ = "Tavern — 25 gold a spin. Mythical prizes are 1 in 10,000.";
+                hudMessage = townNotice_;
+                return;
+            }
+            tavernPanelOpen_ = false;
+            healerPanelOpen_ = true;
+            townNotice_ = "Chapel — rest for a small tithe.";
+            hudMessage = townNotice_;
+            return;
+        }
+    }
+
+    void renderTownScene() {
+        if (laneActive_ || zoneManager.allowsFreeMovement()) {
+            return;
+        }
+
+        ensureTownBackdrop();
+        const float width = static_cast<float>(window.width());
+        const float height = static_cast<float>(window.height());
+        if (townBackdrop_.isValid()) {
+            const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+            uiRenderer.drawTexturedRect(townBackdrop_, 0.0F, 0.0F, width, height, white);
+        } else {
+            const float sky[4] = {0.07F, 0.06F, 0.1F, 1.0F};
+            uiRenderer.drawFilledRect(0.0F, 0.0F, width, height, sky);
+        }
+
+        const ui::TownSceneLayout layout = ui::computeTownSceneLayout(currentUiScale());
+        const auto paintBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building, const float ruined[4], const float restored[4]) {
+            const bool repaired = townHub_.isRepaired(building);
+            const float* tint = repaired ? restored : ruined;
+            uiRenderer.drawFilledRect(rect.x, rect.y, rect.width, rect.height, tint);
+            const float border[4] = {0.86F, 0.68F, 0.32F, repaired ? 1.0F : 0.55F};
+            uiRenderer.drawOutlineRect(rect.x, rect.y, rect.width, rect.height, border, repaired ? 3.0F : 2.0F);
+        };
+
+        const float forgeRuin[4] = {0.16F, 0.12F, 0.1F, 0.62F};
+        const float forgeOpen[4] = {0.55F, 0.24F, 0.08F, 0.38F};
+        const float chapelRuin[4] = {0.14F, 0.12F, 0.16F, 0.62F};
+        const float chapelOpen[4] = {0.72F, 0.62F, 0.32F, 0.34F};
+        const float tavernRuin[4] = {0.22F, 0.1F, 0.1F, 0.62F};
+        const float tavernOpen[4] = {0.48F, 0.14F, 0.18F, 0.4F};
+        paintBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith, forgeRuin, forgeOpen);
+        paintBuilding(layout.healer, systems::TownBuilding::Healer, chapelRuin, chapelOpen);
+        paintBuilding(layout.tavern, systems::TownBuilding::Tavern, tavernRuin, tavernOpen);
+
+        const float roadFill[4] = {0.28F, 0.18F, 0.08F, 0.9F};
+        const float roadBorder[4] = {0.9F, 0.74F, 0.32F, 1.0F};
+        uiRenderer.drawFilledRect(layout.road.x, layout.road.y, layout.road.width, layout.road.height, roadFill);
+        uiRenderer.drawOutlineRect(layout.road.x, layout.road.y, layout.road.width, layout.road.height, roadBorder, 2.0F);
+
+        if (tavernPanelOpen_ || healerPanelOpen_) {
+            const float panel[4] = {0.06F, 0.045F, 0.04F, 0.94F};
+            const float border[4] = {0.78F, 0.58F, 0.24F, 1.0F};
+            uiRenderer.drawFilledRect(
+                layout.servicePanel.x, layout.servicePanel.y, layout.servicePanel.width, layout.servicePanel.height, panel);
+            uiRenderer.drawOutlineRect(
+                layout.servicePanel.x,
+                layout.servicePanel.y,
+                layout.servicePanel.width,
+                layout.servicePanel.height,
+                border,
+                2.0F);
+            const float button[4] = {0.36F, 0.16F, 0.08F, 1.0F};
+            const float close[4] = {0.18F, 0.14F, 0.12F, 1.0F};
+            uiRenderer.drawFilledRect(
+                layout.serviceAction.x, layout.serviceAction.y, layout.serviceAction.width, layout.serviceAction.height, button);
+            uiRenderer.drawFilledRect(
+                layout.serviceClose.x, layout.serviceClose.y, layout.serviceClose.width, layout.serviceClose.height, close);
+        }
+    }
+
+    void renderTownSceneText() const {
+        if (laneActive_ || zoneManager.allowsFreeMovement() || nodeMapOpen_) {
+            return;
+        }
+
+        const ui::TownSceneLayout layout = ui::computeTownSceneLayout(currentUiScale());
+        const float title[4] = {0.96F, 0.9F, 0.72F, 1.0F};
+        const float sub[4] = {0.78F, 0.7F, 0.52F, 0.95F};
+        const auto labelBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building) {
+            const systems::TownBuildingDefinition definition = systems::townBuildingDefinition(building);
+            const bool repaired = townHub_.isRepaired(building);
+            const ui::Rect nameRect{rect.x + 8.0F, rect.y + rect.height * 0.38F, rect.width - 16.0F, 28.0F};
+            const ui::Rect subRect{rect.x + 8.0F, nameRect.y + 30.0F, rect.width - 16.0F, 48.0F};
+            textRenderer.drawTextCentered(nameRect, repaired ? definition.name : definition.ruinedName, 1.7F, title);
+            std::string detail = repaired ? definition.serviceHint : 
+                ("Repair  " + std::to_string(definition.repairGold) + "g  Lv " + std::to_string(definition.requiredLevel));
+            textRenderer.drawTextCentered(subRect, detail.c_str(), 1.25F, sub);
+        };
+        labelBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith);
+        labelBuilding(layout.healer, systems::TownBuilding::Healer);
+        labelBuilding(layout.tavern, systems::TownBuilding::Tavern);
+        textRenderer.drawTextCentered(layout.road, "The Road", 1.6F, title);
+
+        if (tavernPanelOpen_ || healerPanelOpen_) {
+            const float body[4] = {0.9F, 0.84F, 0.7F, 1.0F};
+            const char* titleText = tavernPanelOpen_ ? "Tavern gamble" : "Chapel";
+            textRenderer.drawTextCentered(layout.serviceTitle, titleText, 1.6F, title);
+            const char* bodyText = tavernPanelOpen_
+                ? "Pay 25 gold. Most spins pay coin or common scraps. Mythical is 1 in 10,000."
+                : "Pay a small tithe to restore health and mana.";
+            textRenderer.drawTextCentered(layout.serviceBody, bodyText, 1.2F, body);
+            textRenderer.drawTextCentered(layout.serviceAction, tavernPanelOpen_ ? "Spin" : "Rest", 1.5F, title);
+            textRenderer.drawTextCentered(layout.serviceClose, "Close", 1.4F, sub);
+        }
+    }
+
     void renderLaneBanner() const {
         const float width = static_cast<float>(window.width());
         if (laneActive_) {
@@ -3744,10 +3992,13 @@ struct GameApplication::Impl {
             textRenderer.drawTextCentered(banner, lane_.status(), 1.7F, color);
             return;
         }
-        if (zoneManager.activeZone() == gameplay::WorldZone::TOWN && !nodeMapOpen_) {
-            const ui::Rect hint{width * 0.5F - 260.0F, 36.0F, 520.0F, 24.0F};
-            const float color[4] = {0.85F, 0.78F, 0.55F, 0.95F};
-            textRenderer.drawTextCentered(hint, "Press M to choose a road", 1.45F, color);
+        if (zoneManager.activeZone() == gameplay::WorldZone::TOWN && !nodeMapOpen_ && !laneActive_) {
+            const ui::Rect hint{width * 0.5F - 340.0F, 8.0F, 680.0F, 22.0F};
+            const float color[4] = {0.93F, 0.86F, 0.62F, 0.95F};
+            const char* line = townNotice_.empty()
+                ? "Click a ruin to repair it with gold. The road leaves town."
+                : townNotice_.c_str();
+            textRenderer.drawTextCentered(hint, line, 1.35F, color);
         }
     }
 
@@ -3761,7 +4012,7 @@ struct GameApplication::Impl {
         }
         const render::UiFrameUv uv = itemIcons_.uvFor(itemIconFrame(item.category));
         const float tint[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-        const float pad = 6.0F;
+        const float pad = 3.0F;
         uiRenderer.drawTexturedRectUV(
             itemIcons_.texture(),
             slot.x + pad,
@@ -3777,10 +4028,14 @@ struct GameApplication::Impl {
 
     [[nodiscard]] static float lootIntensityForRank(const int rank) noexcept {
         switch (rank) {
+        case 5:
+            return 2.8F;
+        case 4:
+            return 2.4F;
         case 3:
             return 2.2F;
         case 2:
-            return 1.75F;
+            return 1.45F;
         case 1:
             return 1.0F;
         default:
@@ -4063,6 +4318,11 @@ struct GameApplication::Impl {
         grantSouls(soulsAwarded);
         spawnSoulsNumber(targetPosition, soulsAwarded);
         runProgression_.onMobKill();
+        const int goldBounty = systems::combatGoldBounty(isBoss, isElite, runProgression_.depth());
+        zoneManager.player().addGold(goldBounty);
+        tradeSystem.setPlayerGold(zoneManager.player().gold());
+        spawnFloatingCombatText(
+            targetPosition, "+" + std::to_string(goldBounty) + "g", 0.95F, 0.82F, 0.28F, 1.5F, 2.0F);
 
         const int experienceAward = isBoss ? 36 : (isElite ? 14 : 8);
         const systems::ExperienceGrant experienceGrant =
@@ -4133,10 +4393,7 @@ struct GameApplication::Impl {
     }
 
     void castSkillSlot(const int slotIndex) {
-        const systems::SkillDefinition& queued = systems::skillDefinition(skillBar_.slot(slotIndex));
-        const bool utility = queued.targeting == systems::SkillTargeting::Self ||
-                             queued.targeting == systems::SkillTargeting::Direction;
-        if (!zoneManager.player().attacksEnabled() && !utility) {
+        if (!zoneManager.allowsFreeMovement()) {
             hudMessage = "Skills are sealed inside Town";
             logInfo(hudMessage);
             return;
@@ -4463,6 +4720,11 @@ struct GameApplication::Impl {
         }
 
         if (keyPressed(GLFW_KEY_ESCAPE)) {
+            if (tavernPanelOpen_ || healerPanelOpen_) {
+                tavernPanelOpen_ = false;
+                healerPanelOpen_ = false;
+                return;
+            }
             if (stateManager.currentState() == gameplay::GameState::CHARACTER_MENU) {
                 stateManager.closeCharacterMenu();
                 overlayState.showCharacterScreen(false);
@@ -4545,12 +4807,11 @@ struct GameApplication::Impl {
             }
         }
 
-        if (keyPressed(GLFW_KEY_E)) {
-            if (zoneManager.isInsideBlacksmithRadius(toVec3(playerPosition)) &&
-                stateManager.currentState() == gameplay::GameState::TOWN) {
-                tradeSystem.setPlayerGold(zoneManager.player().gold());
-                stateManager.enterTrading();
-                hudMessage = "Blacksmith — click items to sell, forge services below";
+        if (keyPressed(GLFW_KEY_E) && zoneManager.activeZone() == gameplay::WorldZone::TOWN && !laneActive_) {
+            if (townHub_.isRepaired(systems::TownBuilding::Blacksmith)) {
+                openTownBlacksmith();
+            } else {
+                hudMessage = "The forge is in ruins. Click it and spend gold to repair.";
                 logInfo(hudMessage);
             }
         }
@@ -4601,6 +4862,14 @@ struct GameApplication::Impl {
 
         if (nodeMapOpen_ && pressed) {
             pickCampaignNode(mouseX, mouseY);
+            return;
+        }
+
+        if (!laneActive_ && !zoneManager.allowsFreeMovement()) {
+            hasMoveTarget = false;
+            if (pressed && !isMouseOverInGameUi(mouseX, mouseY)) {
+                handleTownClick(mouseX, mouseY);
+            }
             return;
         }
 
@@ -5672,6 +5941,13 @@ struct GameApplication::Impl {
     }
 
     void renderWorld() {
+        if (!laneActive_ && !zoneManager.allowsFreeMovement()) {
+            glDisable(GL_DEPTH_TEST);
+            glClearColor(0.05F, 0.035F, 0.04F, 1.0F);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            return;
+        }
+
         const gameplay::CameraMatrices cameraMatrices = camera.matricesForTarget(cameraFocus());
 
         glEnable(GL_DEPTH_TEST);
@@ -6363,13 +6639,15 @@ struct GameApplication::Impl {
             float iconBorder[4]{};
             rarityColors(item.rarity, iconFill, iconBorder);
 
-            const float iconPad = 5.0F;
-            uiRenderer.drawFilledRect(
-                slot.x + iconPad,
-                slot.y + iconPad,
-                slot.width - iconPad * 2.0F,
-                slot.height - iconPad * 2.0F,
-                iconFill);
+            const float iconPad = 4.0F;
+            if (!hasItemIcon(item)) {
+                uiRenderer.drawFilledRect(
+                    slot.x + iconPad,
+                    slot.y + iconPad,
+                    slot.width - iconPad * 2.0F,
+                    slot.height - iconPad * 2.0F,
+                    iconFill);
+            }
             uiRenderer.drawOutlineRect(
                 slot.x + iconPad,
                 slot.y + iconPad,
@@ -6928,13 +7206,15 @@ struct GameApplication::Impl {
         float iconFill[4]{};
         float iconBorder[4]{};
         rarityColors(item.rarity, iconFill, iconBorder);
-        const float iconPad = 5.0F;
-        uiRenderer.drawFilledRect(
-            slot.x + iconPad,
-            slot.y + iconPad,
-            slot.width - iconPad * 2.0F,
-            slot.height - iconPad * 2.0F,
-            iconFill);
+        const float iconPad = 4.0F;
+        if (!hasItemIcon(item)) {
+            uiRenderer.drawFilledRect(
+                slot.x + iconPad,
+                slot.y + iconPad,
+                slot.width - iconPad * 2.0F,
+                slot.height - iconPad * 2.0F,
+                iconFill);
+        }
         uiRenderer.drawOutlineRect(
             slot.x + iconPad,
             slot.y + iconPad,
@@ -7625,6 +7905,7 @@ struct GameApplication::Impl {
         updateInventoryHover(mouseX, mouseY);
 
         uiRenderer.beginFrame();
+        renderTownScene();
         renderScreenFlash();
         renderLootBeacons();
         renderInventoryOverlay();
@@ -7642,6 +7923,7 @@ struct GameApplication::Impl {
         uiRenderer.endFrame();
 
         textRenderer.beginOverlay();
+        renderTownSceneText();
         renderHudConsoleLabels();
         renderLootBeaconLabels();
         renderHudInfoStripLabel();

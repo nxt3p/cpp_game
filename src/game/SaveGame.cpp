@@ -258,14 +258,20 @@ void skipWhitespace(const std::string& json, std::size_t& cursor) {
 }
 
 [[nodiscard]] systems::ItemRarity itemRarityFromLabel(const std::string& value) noexcept {
-    if (value == "Magic" || value == "Rare") {
-        return systems::ItemRarity::Rare;
+    if (value == "Mythical") {
+        return systems::ItemRarity::Mythical;
+    }
+    if (value == "Unique") {
+        return systems::ItemRarity::Unique;
     }
     if (value == "Legendary") {
         return systems::ItemRarity::Legendary;
     }
-    if (value == "Unique") {
-        return systems::ItemRarity::Unique;
+    if (value == "Rare") {
+        return systems::ItemRarity::Rare;
+    }
+    if (value == "Magic") {
+        return systems::ItemRarity::Magic;
     }
     return systems::ItemRarity::Common;
 }
@@ -564,7 +570,8 @@ std::string SaveGameIO::serializeSnapshot(const SaveGameSnapshot& snapshot) {
            << "\"lootCoinPool\":" << snapshot.progression.lootCoinPool << ","
            << "\"lootRngSeed\":" << snapshot.progression.lootRngSeed << ","
            << "\"lootPityCounter\":" << snapshot.progression.lootPityCounter << ","
-           << "\"difficultyTier\":" << snapshot.progression.difficultyTier << "},\n";
+           << "\"difficultyTier\":" << snapshot.progression.difficultyTier << ","
+           << "\"townRepairMask\":" << snapshot.progression.townRepairMask << "},\n";
 
     stream << "  \"world\":{"
            << "\"activeZone\":" << escapeJsonString(worldZoneToString(snapshot.world.activeZone)) << ","
@@ -785,6 +792,8 @@ SaveGameResult SaveGameIO::deserializeSnapshot(
                     outSnapshot.progression.lootPityCounter = static_cast<int>(number);
                 } else if (field == "difficultyTier") {
                     outSnapshot.progression.difficultyTier = static_cast<int>(number);
+                } else if (field == "townRepairMask") {
+                    outSnapshot.progression.townRepairMask = static_cast<int>(number);
                 }
                 skipWhitespace(json, cursor);
                 if (cursor < json.size() && json[cursor] == ',') {

@@ -60,8 +60,8 @@ TEST_CASE("Mob melee damage scales with difficulty modifiers", "[souls]") {
     const int mobScaled = systems::mobMeleeDamage(EntityKind::ENEMY_MOB, 1.35F, 1.15F);
     const int bossBase = systems::mobMeleeDamage(EntityKind::ENEMY_BOSS, 1.0F, 1.0F);
 
-    CHECK(mobBase == 12);
-    CHECK(bossBase == 28);
+    CHECK(mobBase == 18);
+    CHECK(bossBase == 42);
     CHECK(mobScaled > mobBase);
 }
 

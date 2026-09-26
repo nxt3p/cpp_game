@@ -22,7 +22,7 @@ TEST_CASE("CombatSystem applies damage and awards XP on kill", "[combat]") {
     combat.syncScenery(scenery);
     combat.setTarget(200U);
 
-    const std::optional<game::DamageResult> result = combat.applyDamage(200U, 72);
+    const std::optional<game::DamageResult> result = combat.applyDamage(200U, 110);
     REQUIRE(result.has_value());
     CHECK(result->killed);
     CHECK(result->xpReward == 35);
