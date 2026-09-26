@@ -23,14 +23,20 @@ Flux (after the license click and ``huggingface-cli login``)::
 committed pixel-art stand-ins with Pillow and does not need CUDA. A GPU run
 overwrites those files.
 
-The backdrop is only ground and sky. Each building is its own transparent
-sprite (ruined and repaired). ``adventure.png`` is a crossed-swords icon for
-the Start Adventure control, not a road strip.
+The backdrop is an empty plaza: ground, paths, hills, sky, vegetation, and
+dirt pads. It must not contain towers, keeps, chapels, forges, taverns, or
+any other structure. Each building is its own transparent sprite on a stage
+track (ruined, patched, restored, upgraded). The engine maps a stage index
+onto ``{forge,chapel,tavern}_{ruined,patched,repaired,upgraded}.png``.
+Patched and upgraded files are optional until a GPU run writes them.
+``adventure.png`` is a crossed-swords icon for Start Adventure, not a road.
 
 SDXL and Flux paint an opaque canvas. ``--cutouts`` (no GPU) punches the flat
-sky and gray mats and keeps the largest sprite. A GPU run does that step
-automatically. Reprocess the committed plates on any machine with Pillow::
+field and keeps the largest sprite, which is the hard transparent background.
+A GPU run does that step automatically. Reprocess plates on any machine with
+Pillow::
 
+  python scripts/generate_town_sd.py --backend sdxl
   python scripts/generate_town_sd.py --cutouts
 """
 
@@ -66,75 +72,101 @@ NEGATIVE = (
     "jpeg artifacts, modern city, cars, people crowd, face closeup"
 )
 
+BACKDROP_NEGATIVE = (
+    NEGATIVE
+    + ", building, buildings, house, houses, tower, towers, keep, castle, chapel, "
+    "church, forge, blacksmith, tavern, inn, roof, roofs, steeple, spire, wall, "
+    "walls, door, doors, window, windows, structure, structures, ruin, ruins, "
+    "statue, lamp post, lamppost, chimney, fort, fortress, windmill"
+)
+
+PLATE_FIELD = (
+    "single centered building sprite, isolated, flat solid light-gray background, "
+    "no ground plane, no sky, no scenery, no path, no people, no text, no frame"
+)
+
 STYLE = (
     "pixel, fantasy, dark fantasy action RPG location, hand-painted pixel art, "
     "dusk, rich color, clean shapes, no text"
 )
 
+def _plate(name: str, subject: str, seed: int) -> tuple:
+    return (name, f"{subject}, {PLATE_FIELD}", 768, 1024, seed, True)
+
+
 # name, prompt subject, width, height, seed, key_background
+# Stage order per building: ruined, patched, restored (file *_repaired), upgraded.
+# Existing ruined/repaired seeds stay put so a cache hit still matches those files.
 JOBS = (
     (
         "backdrop",
-        "top-down dusk town plaza ground only, cobblestones, dirt paths, grass edges, "
-        "indigo sky fading to amber, distant hills, no buildings, no people, no text",
+        "empty top-down dusk town plaza, only ground, three bare oval dirt clearings, "
+        "winding dirt paths, grass, low shrubs, distant soft hills, indigo sky fading "
+        "to amber, no buildings, no towers, no roofs, no walls, no people, no text",
         1280,
         720,
         5101,
         False,
     ),
-    (
+    _plate(
         "forge_ruined",
-        "one ruined stone blacksmith building only, collapsed roof, cold windows, "
-        "single centered sprite, flat solid light-gray background, no extra doors",
-        768,
-        1024,
+        "one ruined stone blacksmith, collapsed roof, cold dark windows, crumbling walls",
         5102,
-        True,
     ),
-    (
+    _plate(
+        "forge_patched",
+        "one half-repaired stone blacksmith, wooden scaffolding, patched roof holes, a few warm coals",
+        5109,
+    ),
+    _plate(
         "forge_repaired",
-        "one restored fantasy blacksmith building only, timber roof, blazing forge mouth, "
-        "single centered sprite, flat solid light-gray background, no extra objects",
-        768,
-        1024,
+        "one restored fantasy blacksmith, timber roof, blazing forge mouth, sturdy walls",
         5103,
-        True,
     ),
-    (
+    _plate(
+        "forge_upgraded",
+        "one grand upgraded blacksmith, tall stone chimney, ornate timber, bright forge glow",
+        5110,
+    ),
+    _plate(
         "chapel_ruined",
-        "one ruined stone chapel building only, broken steeple, dark windows, "
-        "single centered sprite, flat solid light-gray background, no extra doors",
-        768,
-        1024,
+        "one ruined stone chapel, broken steeple, dark empty windows, fallen masonry",
         5104,
-        True,
     ),
-    (
+    _plate(
+        "chapel_patched",
+        "one partly rebuilt stone chapel, scaffolding on the steeple, boarded gaps, one small warm window",
+        5111,
+    ),
+    _plate(
         "chapel_repaired",
-        "one restored stone chapel building only, tall steeple, warm window, "
-        "single centered sprite, flat solid light-gray background, no extra objects",
-        768,
-        1024,
+        "one restored stone chapel, tall steeple, warm window light, intact roof",
         5105,
-        True,
     ),
-    (
+    _plate(
+        "chapel_upgraded",
+        "one upgraded stone church, taller steeple, rose window, banners, richer masonry",
+        5112,
+    ),
+    _plate(
         "tavern_ruined",
-        "one ruined timber tavern building only, sagging roof, dark windows, "
-        "single centered sprite, flat solid light-gray background, no extra doors",
-        768,
-        1024,
+        "one ruined timber tavern, sagging roof, dark windows, broken sign",
         5106,
-        True,
     ),
-    (
+    _plate(
+        "tavern_patched",
+        "one half-repaired timber tavern, fresh planks on a sagging roof, one lit window",
+        5113,
+    ),
+    _plate(
         "tavern_repaired",
-        "one cozy restored fantasy tavern building only, red roof, glowing windows, "
-        "single centered sprite, flat solid light-gray background, no extra objects",
-        768,
-        1024,
+        "one cozy restored fantasy tavern, red roof, glowing windows, hanging sign",
         5107,
-        True,
+    ),
+    _plate(
+        "tavern_upgraded",
+        "one grand upgraded tavern, larger red roof, lanterns, ornate timber balcony",
+        5114,
     ),
     (
         "adventure",
@@ -171,42 +203,82 @@ def _poly(draw, points, color, scale: int) -> None:
 
 
 def paint_backdrop(Image, ImageDraw):
-    scale = 3
+    """Empty dusk plaza. Pads are clearings, never buildings."""
+    scale = 4
     w, h = 320, 180
-    image = Image.new("RGBA", (w * scale, h * scale), (18, 16, 36, 255))
+    image = Image.new("RGBA", (w * scale, h * scale), (36, 28, 64, 255))
     draw = ImageDraw.Draw(image)
-    sky_top = (28, 24, 62)
-    sky_mid = (92, 48, 86)
-    sky_low = (214, 112, 68)
-    for y in range(118):
-        t = y / 118
-        if t < 0.55:
-            u = t / 0.55
+    sky_top = (42, 32, 86)
+    sky_mid = (118, 78, 112)
+    sky_low = (214, 132, 86)
+    horizon = 62
+    for y in range(horizon + 8):
+        t = y / horizon
+        if t < 0.5:
+            u = t / 0.5
             color = tuple(int(sky_top[i] + (sky_mid[i] - sky_top[i]) * u) for i in range(3))
         else:
-            u = (t - 0.55) / 0.45
+            u = min(1.0, (t - 0.5) / 0.5)
             color = tuple(int(sky_mid[i] + (sky_low[i] - sky_mid[i]) * u) for i in range(3))
         _block(draw, 0, y, w, 1, color + (255,), scale)
-    stars = (
-        (18, 12), (40, 28), (66, 10), (90, 36), (120, 16), (148, 8), (170, 30),
-        (210, 14), (236, 40), (40, 48), (200, 22), (280, 18), (300, 34), (110, 44),
+    for x, y in (
+        (18, 10), (46, 22), (78, 8), (110, 28), (150, 12), (188, 24),
+        (230, 9), (268, 20), (300, 14), (24, 36), (200, 34),
+    ):
+        _block(draw, x, y, 1, 1, (236, 226, 196, 255), scale)
+    _block(draw, 262, 12, 14, 14, (244, 224, 186, 255), scale)
+    _block(draw, 266, 15, 4, 4, (210, 180, 130, 255), scale)
+    _poly(
+        draw,
+        [(0, 70), (36, 54), (78, 66), (120, 50), (168, 64), (220, 52), (270, 62), (320, 56), (320, 86), (0, 86)],
+        (58, 44, 72, 255),
+        scale,
     )
-    for x, y in stars:
-        _block(draw, x, y, 1, 1, (236, 228, 196, 255), scale)
-    _block(draw, 248, 18, 22, 22, (244, 226, 186, 255), scale)
-    _block(draw, 254, 22, 6, 6, (220, 196, 140, 255), scale)
-    _poly(draw, [(0, 108), (40, 96), (90, 104), (150, 92), (210, 102), (270, 94), (320, 106), (320, 130), (0, 130)], (42, 36, 64, 255), scale)
-    _poly(draw, [(0, 122), (70, 110), (140, 118), (220, 108), (320, 120), (320, 140), (0, 140)], (32, 40, 36, 255), scale)
-    for y in range(128, 180):
-        grass = (46, 68, 40, 255) if y < 150 else (34, 50, 32, 255)
+    _poly(
+        draw,
+        [(0, 82), (50, 68), (110, 78), (180, 66), (250, 76), (320, 70), (320, 98), (0, 98)],
+        (42, 58, 46, 255),
+        scale,
+    )
+    for y in range(78, h):
+        shade = y / h
+        grass = (
+            int(62 - 18 * shade),
+            int(86 - 22 * shade),
+            int(48 - 12 * shade),
+            255,
+        )
         _block(draw, 0, y, w, 1, grass, scale)
-    for x in range(28, 292, 18):
-        for y in range(136, 168, 12):
-            stone = (112, 78, 48, 255) if ((x // 18 + y // 12) % 2) == 0 else (86, 60, 38, 255)
-            _block(draw, x, y, 16, 10, stone, scale)
-    for lamp_x in (70, 160, 250):
-        _block(draw, lamp_x, 128, 2, 22, (48, 36, 28, 255), scale)
-        _block(draw, lamp_x - 2, 124, 6, 6, (255, 186, 84, 255), scale)
+    for x in range(0, w, 7):
+        for y in range(82, h, 6):
+            if ((x * 3 + y * 5) % 17) != 0:
+                continue
+            tuft = (78, 104, 52, 255) if (x + y) % 2 == 0 else (48, 70, 36, 255)
+            _block(draw, x, y, 2, 2, tuft, scale)
+
+    def clearing(cx: int, cy: int, rx: int, ry: int) -> None:
+        draw.ellipse(
+            [(cx - rx) * scale, (cy - ry) * scale, (cx + rx) * scale, (cy + ry) * scale],
+            fill=(112, 82, 52, 255),
+        )
+        draw.ellipse(
+            [(cx - rx + 6) * scale, (cy - ry + 3) * scale, (cx + rx - 8) * scale, (cy + ry - 2) * scale],
+            fill=(142, 108, 68, 255),
+        )
+
+    # Forge left, chapel far center, tavern right. Feet sit on these ovals.
+    clearing(47, 118, 38, 14)
+    clearing(131, 74, 34, 12)
+    clearing(229, 106, 34, 13)
+    clearing(88, 100, 16, 7)
+    clearing(176, 92, 18, 8)
+    trees = ((8, 108), (18, 150), (96, 156), (168, 158), (292, 148), (304, 112), (70, 168))
+    for tx, ty in trees:
+        _poly(draw, [(tx, ty), (tx - 8, ty + 16), (tx + 8, ty + 16)], (28, 52, 36, 255), scale)
+        _block(draw, tx - 1, ty + 14, 2, 6, (62, 44, 28, 255), scale)
+    for bx, by in ((30, 140), (250, 150), (150, 130), (200, 168)):
+        _block(draw, bx, by, 3, 2, (86, 120, 58, 255), scale)
+        _block(draw, bx + 1, by - 2, 1, 2, (196, 168, 72, 255), scale)
     return image
 
 
@@ -445,7 +517,11 @@ def write_cutouts() -> None:
         if not keyed:
             continue
         path = OUT / f"{name}.png"
+        optional = "patched" in name or "upgraded" in name
         if not path.exists():
+            if optional:
+                print(f"skip missing optional {path.name}")
+                continue
             raise SystemExit(f"missing {path}; generate or restore the town plates first")
         image = isolate_plate(Image.open(path), road=(name == "road"))
         image.save(path)
@@ -516,7 +592,7 @@ def run_generation(backend: str, steps: int, cpu_offload: bool) -> None:
             }
             if backend == "sdxl":
                 kwargs["guidance_scale"] = 6.0
-                kwargs["negative_prompt"] = NEGATIVE
+                kwargs["negative_prompt"] = BACKDROP_NEGATIVE if name == "backdrop" else NEGATIVE
             else:
                 kwargs["guidance_scale"] = 3.5
             image = pipe(**kwargs).images[0].convert("RGBA")

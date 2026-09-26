@@ -3,6 +3,8 @@
 
 #include "gameplay/ZoneManager.hpp"
 #include "render/TownBackdrop.hpp"
+#include "render/TownSilhouette.hpp"
+#include "render/TownStages.hpp"
 #include "systems/LootEngine.hpp"
 #include "systems/SlotMachineLoot.hpp"
 #include "systems/TownHub.hpp"
@@ -307,9 +309,11 @@ TEST_CASE("Town captions sit under the building art", "[town][ui]") {
 extern "C" {
 unsigned char* stbi_load(const char* filename, int* x, int* y, int* channels_in_file, int desired_channels);
 void stbi_image_free(void* retval_from_stbi_load);
+void stbi_set_flip_vertically_on_load(int flag_true_if_should_flip);
 }
 
 TEST_CASE("Town plates keep a transparent margin around the sprite", "[town]") {
+    stbi_set_flip_vertically_on_load(0);
     const std::filesystem::path root{ENGINE_ASSETS_DIR};
     const char* plates[] = {
         "forge_ruined.png",
@@ -357,8 +361,57 @@ TEST_CASE("Town plates keep a transparent margin around the sprite", "[town]") {
     const std::filesystem::path backdrop = root / "textures" / "town" / "backdrop.png";
     unsigned char* backdropPixels = stbi_load(backdrop.string().c_str(), &backdropW, &backdropH, &backdropChannels, 4);
     REQUIRE(backdropPixels != nullptr);
+    CHECK(backdropW >= 640);
+    CHECK(backdropH >= 360);
     CHECK(backdropPixels[3] > 200);
+    int stone = 0;
+    int looked = 0;
+    for (int y = backdropH / 10; y < (backdropH * 45) / 100; y += 4) {
+        for (int x = 0; x < (backdropW * 28) / 100; x += 4) {
+            const std::size_t index =
+                (static_cast<std::size_t>(y) * static_cast<std::size_t>(backdropW) + static_cast<std::size_t>(x)) * 4U;
+            const int red = backdropPixels[index];
+            const int green = backdropPixels[index + 1U];
+            const int blue = backdropPixels[index + 2U];
+            const int lum = (red + green + blue) / 3;
+            const int sat = std::max(red, std::max(green, blue)) - std::min(red, std::min(green, blue));
+            ++looked;
+            if (sat < 18 && lum > 70 && lum < 180) {
+                ++stone;
+            }
+        }
+    }
+    CHECK(looked > 40);
+    CHECK(stone * 5 < looked);
+    const auto backdropAt = [&](const int x, const int y) {
+        const std::size_t index =
+            (static_cast<std::size_t>(y) * static_cast<std::size_t>(backdropW) + static_cast<std::size_t>(x)) * 4U;
+        return std::tuple{backdropPixels[index], backdropPixels[index + 1U], backdropPixels[index + 2U]};
+    };
+    const auto [padR, padG, padB] = backdropAt((backdropW * 15) / 100, (backdropH * 66) / 100);
+    CHECK(padR > padB + 20);
+    CHECK(padR > 80);
     stbi_image_free(backdropPixels);
+
+    const auto checksum = [&](const char* file) {
+        const std::filesystem::path path = root / "textures" / "town" / file;
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        unsigned char* pixels = stbi_load(path.string().c_str(), &width, &height, &channels, 4);
+        REQUIRE(pixels != nullptr);
+        unsigned sum = 0;
+        const int count = width * height;
+        for (int index = 0; index < count; index += 8) {
+            sum += pixels[static_cast<std::size_t>(index) * 4U];
+            sum += pixels[static_cast<std::size_t>(index) * 4U + 3U];
+        }
+        stbi_image_free(pixels);
+        return sum;
+    };
+    CHECK(checksum("forge_ruined.png") != checksum("forge_repaired.png"));
+    CHECK(checksum("chapel_ruined.png") != checksum("chapel_repaired.png"));
+    CHECK(checksum("tavern_ruined.png") != checksum("tavern_repaired.png"));
 }
 
 TEST_CASE("Procedural town backdrop paints distinct original color", "[town]") {
@@ -388,6 +441,13 @@ TEST_CASE("Procedural town backdrop paints distinct original color", "[town]") {
     CHECK(skyB > skyR);
     const auto [groundR, groundG, groundB] = sample(image.width / 2, image.height - 4);
     CHECK(groundG + groundR > groundB);
+    const auto [padR, padG, padB] = sample((image.width * 15) / 100, (image.height * 66) / 100);
+    CHECK(padR > padB + 15);
+    const int lampX = (image.width * 22) / 100;
+    const int lampY = (image.height * 74) / 100;
+    const auto [lampR, lampG, lampB] = sample(lampX, lampY);
+    const bool lantern = lampR > 220 && lampG > 160 && lampB < 140;
+    CHECK_FALSE(lantern);
 
     const auto warmPixels = [](const render::TownPixelBuffer& plate) {
         int warm = 0;
@@ -424,4 +484,69 @@ TEST_CASE("Procedural town backdrop paints distinct original color", "[town]") {
     writeTownBmp(openChapel, "/tmp/town_chapel_open.bmp");
     writeTownBmp(render::paintTownPlate(render::TownPlateKind::Tavern, false, 80, 110), "/tmp/town_tavern_ruined.bmp");
     writeTownBmp(render::paintTownPlate(render::TownPlateKind::Tavern, true, 80, 110), "/tmp/town_tavern_open.bmp");
+}
+
+TEST_CASE("Town art stages map repair onto restored and fall back when a file is missing", "[town]") {
+    static_assert(static_cast<int>(systems::TownBuilding::Blacksmith) == 0);
+    static_assert(static_cast<int>(systems::TownBuilding::Tavern) == 1);
+    static_assert(static_cast<int>(systems::TownBuilding::Healer) == 2);
+    CHECK(render::townArtStage(false) == static_cast<int>(render::TownArtStage::Ruined));
+    CHECK(render::townArtStage(true) == static_cast<int>(render::TownArtStage::Restored));
+    const bool ruinedOnly[render::kTownArtStageCount] = {true, false, false, false};
+    CHECK(render::townResolvedArtStage(static_cast<int>(render::TownArtStage::Restored), ruinedOnly) ==
+          static_cast<int>(render::TownArtStage::Ruined));
+    const bool shipped[render::kTownArtStageCount] = {true, false, true, false};
+    CHECK(render::townResolvedArtStage(static_cast<int>(render::TownArtStage::Restored), shipped) ==
+          static_cast<int>(render::TownArtStage::Restored));
+    CHECK(render::townResolvedArtStage(static_cast<int>(render::TownArtStage::Ruined), shipped) ==
+          static_cast<int>(render::TownArtStage::Ruined));
+    const bool patched[render::kTownArtStageCount] = {true, true, false, false};
+    CHECK(render::townResolvedArtStage(static_cast<int>(render::TownArtStage::Restored), patched) ==
+          static_cast<int>(render::TownArtStage::Patched));
+    const bool upgraded[render::kTownArtStageCount] = {true, true, true, true};
+    CHECK(render::townResolvedArtStage(static_cast<int>(render::TownArtStage::Upgraded), upgraded) ==
+          static_cast<int>(render::TownArtStage::Upgraded));
+    CHECK(std::string(render::townStageFile(0, static_cast<int>(render::TownArtStage::Restored))) == "forge_repaired.png");
+    CHECK(std::string(render::townStageFile(2, static_cast<int>(render::TownArtStage::Upgraded))) == "chapel_upgraded.png");
+    CHECK(std::string(render::townStageFile(1, static_cast<int>(render::TownArtStage::Patched))) == "tavern_patched.png");
+    CHECK(render::townStageRequired(static_cast<int>(render::TownArtStage::Ruined)));
+    CHECK(render::townStageRequired(static_cast<int>(render::TownArtStage::Restored)));
+    CHECK_FALSE(render::townStageRequired(static_cast<int>(render::TownArtStage::Patched)));
+    CHECK_FALSE(render::townStageRequired(static_cast<int>(render::TownArtStage::Upgraded)));
+}
+
+TEST_CASE("Town hover outline follows the silhouette and ignores empty canvas", "[town]") {
+    constexpr int kSize = 40;
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kSize * kSize * 4), 0);
+    const auto plot = [&](const int x, const int y) {
+        const std::size_t index = (static_cast<std::size_t>(y) * kSize + static_cast<std::size_t>(x)) * 4U;
+        pixels[index] = 180;
+        pixels[index + 1U] = 80;
+        pixels[index + 2U] = 40;
+        pixels[index + 3U] = 255;
+    };
+    for (int y = 8; y < 28; ++y) {
+        for (int x = 8; x < 14; ++x) {
+            plot(x, y);
+        }
+    }
+    for (int y = 8; y < 14; ++y) {
+        for (int x = 14; x < 30; ++x) {
+            plot(x, y);
+        }
+    }
+    const render::TownSilhouette outline = render::buildTownSilhouette(pixels.data(), kSize, kSize, 3.5F);
+    const auto outlineAlpha = [&](const int x, const int y) {
+        return outline.outline[(static_cast<std::size_t>(y) * kSize + static_cast<std::size_t>(x)) * 4U + 3U];
+    };
+    CHECK(outlineAlpha(10, 18) == 0);
+    CHECK(outlineAlpha(6, 18) > 140);
+    CHECK(outlineAlpha(0, 0) == 0);
+    CHECK(outlineAlpha(26, 22) < 40);
+    CHECK(render::townSpriteOpaqueAt(
+        outline.alpha.data(), kSize, kSize, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 40.0F, 40.0F, 10.5F, 18.5F));
+    CHECK_FALSE(render::townSpriteOpaqueAt(
+        outline.alpha.data(), kSize, kSize, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 40.0F, 40.0F, 26.5F, 22.5F));
+    CHECK_FALSE(render::townSpriteOpaqueAt(
+        outline.alpha.data(), kSize, kSize, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 40.0F, 40.0F, 39.5F, 1.0F));
 }

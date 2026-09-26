@@ -19,7 +19,7 @@ enum class TownPlateKind : std::uint8_t {
     Road
 };
 
-/// Original dusk-town illustration. Buildings are separate plates so ruins and repairs read apart.
+/// Dusk plaza with sky, hills, and empty dirt pads. Buildings are never painted here.
 [[nodiscard]] TownPixelBuffer paintTownBackdrop(int width, int height);
 
 /// Building or road plate. `restored` is ignored for the road, which is always open.

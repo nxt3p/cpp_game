@@ -150,7 +150,7 @@ Buildings start in ruins. Click one to spend gold once your level is high enough
 
 Kills pay gold and experience directly, so the first repairs come from fighting rather than from a pile of items. **Start Adventure** (the crossed swords on the right, or **M**) opens the campaign map. The circular minimap stays hidden on this scene and returns on the road and in combat. Mythical items are reserved for the tavern reel at 1/10000.
 
-The town is a backdrop plus separate sprites. `backdrop.png` is the full-screen dusk ground and sky, with no buildings baked in. Forge, chapel, and tavern each have a ruined and a repaired PNG with a real alpha channel. The engine fits the opaque pixels into a plaza (forge left, chapel upper center, tavern right) and keeps that art above the HUD. `adventure.png` is the crossed-swords icon. Hover strokes follow the opaque sprite, not the empty canvas. On the RTX 5080, regenerate them with the same SDXL LoRAs as the item atlases. The script punches flat sky and gray mats after generation:
+The town is an empty plaza plus separate sprites. `backdrop.png` is only ground, paths, hills, sky, vegetation, and dirt pads — no towers, keeps, chapels, forges, or taverns are baked into it. Forge, chapel, and tavern are transparent PNGs on a stage track: ruined, patched, restored, upgraded (`forge_ruined.png`, `forge_patched.png`, `forge_repaired.png`, `forge_upgraded.png`, and the same pattern for `chapel` and `tavern`). Repair shows the restored stage. Patched and upgraded files are optional; the engine walks back to the nearest stage that exists, so adding a church upgrade is a new PNG. Sprites sit on the pads (forge left, chapel upper center, tavern right) above the HUD. `adventure.png` is the crossed-swords icon. Hover draws a gold contour around opaque pixels, and clicks hit those pixels or the caption. On the RTX 5080, regenerate with the same SDXL LoRAs as the item atlases. The script punches the flat field into a hard alpha after generation:
 
 ```bash
 cd /home/dev/projects/cppGame
@@ -166,7 +166,7 @@ Flux, after accepting the license and `huggingface-cli login`:
 python scripts/generate_town_sd.py --backend flux --cpu-offload
 ```
 
-`python scripts/generate_town_sd.py --dry-run` prints prompts without a GPU. `--placeholders` rewrites the committed pixel-art stand-ins with Pillow and does not need CUDA. `--cutouts` re-runs only the alpha step on the PNGs already in `assets/textures/town` (Pillow, no GPU):
+`python scripts/generate_town_sd.py --dry-run` prints prompts without a GPU, including the empty-plaza negatives and the four stage sheets per building. `--placeholders` rewrites the committed pixel-art stand-ins with Pillow and does not need CUDA. `--cutouts` re-runs only the alpha step on the PNGs already in `assets/textures/town` (Pillow, no GPU) and skips patched or upgraded files that are not there yet:
 
 ```bash
 python scripts/generate_town_sd.py --cutouts

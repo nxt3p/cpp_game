@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace render {
 
@@ -119,7 +120,7 @@ void paintSky(TownPixelBuffer& image) {
     const Rgba top{28, 34, 78, 255};
     const Rgba mid{92, 58, 86, 255};
     const Rgba dusk{214, 122, 72, 255};
-    const int horizon = (image.height * 62) / 100;
+    const int horizon = (image.height * 38) / 100;
     for (int y = 0; y < image.height; ++y) {
         const float t = static_cast<float>(y) / static_cast<float>(std::max(1, horizon));
         const Rgba sky = y < horizon ? (t < 0.55F ? mix(top, mid, t / 0.55F) : mix(mid, dusk, (t - 0.55F) / 0.45F))
@@ -149,7 +150,7 @@ void paintSky(TownPixelBuffer& image) {
 }
 
 void paintHills(TownPixelBuffer& image) {
-    const int horizon = (image.height * 62) / 100;
+    const int horizon = (image.height * 38) / 100;
     for (int band = 0; band < 3; ++band) {
         const Rgba hill = mix({36, 32, 58, 255}, {78, 52, 48, 255}, static_cast<float>(band) / 2.0F);
         const int base = horizon - 8 + band * (image.height / 18);
@@ -163,7 +164,13 @@ void paintHills(TownPixelBuffer& image) {
     }
     for (int tree = 0; tree < 7; ++tree) {
         const int x = (image.width * (6 + tree * 13)) / 100;
-        const int ground = (image.height * 64) / 100;
+        const bool onPad = std::abs(x - (image.width * 15) / 100) < image.width / 10 ||
+            std::abs(x - (image.width * 41) / 100) < image.width / 10 ||
+            std::abs(x - (image.width * 72) / 100) < image.width / 10;
+        if (onPad) {
+            continue;
+        }
+        const int ground = (image.height * 46) / 100;
         const int height = image.height / 7 + (hash2(tree, 3) % std::max(4, image.height / 18));
         const Rgba pine{24, 36, 32, 255};
         for (int y = 0; y < height; ++y) {
@@ -173,8 +180,17 @@ void paintHills(TownPixelBuffer& image) {
     }
 }
 
+void paintClearing(TownPixelBuffer& image, const float fx, const float fy, const float rxFrac, const float ryFrac) {
+    const int cx = static_cast<int>(static_cast<float>(image.width) * fx);
+    const int cy = static_cast<int>(static_cast<float>(image.height) * fy);
+    const int rx = std::max(4, static_cast<int>(static_cast<float>(image.width) * rxFrac));
+    const int ry = std::max(3, static_cast<int>(static_cast<float>(image.height) * ryFrac));
+    ellipse(image, cx, cy + ry / 5, rx, ry, {98, 72, 46, 255});
+    ellipse(image, cx, cy, (rx * 3) / 4, (ry * 3) / 4, {132, 98, 62, 255});
+}
+
 void paintMeadow(TownPixelBuffer& image) {
-    const int ground = (image.height * 64) / 100;
+    const int ground = (image.height * 40) / 100;
     for (int y = ground; y < image.height; ++y) {
         const float t = static_cast<float>(y - ground) / static_cast<float>(std::max(1, image.height - ground));
         const Rgba grass = mix({58, 78, 46, 255}, {36, 48, 30, 255}, t);
@@ -188,30 +204,12 @@ void paintMeadow(TownPixelBuffer& image) {
         }
     }
 
-    const int plazaTop = (image.height * 68) / 100;
-    const int plazaBottom = (image.height * 90) / 100;
-    for (int y = plazaTop; y < plazaBottom; ++y) {
-        for (int x = image.width / 12; x < (image.width * 11) / 12; ++x) {
-            const int n = hash2(x + 9, y + 4);
-            const Rgba dirt = ((n % 5) == 0) ? Rgba{112, 78, 48, 255} : Rgba{92, 64, 40, 255};
-            put(image, x, y, dirt);
-        }
-    }
-
-    const int roadTop = (image.height * 86) / 100;
-    for (int y = roadTop; y < image.height - 2; ++y) {
-        for (int x = image.width / 5; x < (image.width * 4) / 5; ++x) {
-            const bool mortar = ((x / 6 + y / 4) % 2) == 0;
-            put(image, x, y, mortar ? Rgba{118, 96, 70, 255} : Rgba{78, 58, 40, 255});
-        }
-    }
-
-    for (int lamp = 0; lamp < 3; ++lamp) {
-        const int x = (image.width * (22 + lamp * 28)) / 100;
-        const int y = (image.height * 74) / 100;
-        fillRect(image, x, y, x + 2, roadTop, {48, 36, 28, 255});
-        disc(image, x + 1, y - 2, std::max(2, image.width / 80), {255, 186, 84, 210});
-    }
+    // Empty pads where the forge, chapel, and tavern sprites stand. No posts or walls.
+    paintClearing(image, 0.15F, 0.66F, 0.11F, 0.07F);
+    paintClearing(image, 0.41F, 0.40F, 0.10F, 0.06F);
+    paintClearing(image, 0.72F, 0.59F, 0.10F, 0.065F);
+    paintClearing(image, 0.28F, 0.55F, 0.06F, 0.035F);
+    paintClearing(image, 0.56F, 0.50F, 0.07F, 0.04F);
 }
 
 void paintWall(

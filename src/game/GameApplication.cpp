@@ -25,6 +25,8 @@
 #include "render/SpriteSheet.hpp"
 #include "render/TextRenderer.hpp"
 #include "render/TownBackdrop.hpp"
+#include "render/TownSilhouette.hpp"
+#include "render/TownStages.hpp"
 #include "render/UiAssets.hpp"
 #include "render/UiRenderer.hpp"
 #include "render/WorldPropAssets.hpp"
@@ -424,8 +426,19 @@ struct GameApplication::Impl {
         float u1{1.0F};
         float v1{1.0F};
     };
-    std::array<render::Texture, 7> townPlates_{};
-    std::array<TownSpriteFrame, 7> townFrames_{};
+    /// One painted stage of one building. Color and outline share image-space UVs.
+    struct TownArtLayer {
+        render::Texture color;
+        render::Texture outline;
+        TownSpriteFrame frame{};
+        std::vector<std::uint8_t> alpha;
+        int imageWidth{0};
+        int imageHeight{0};
+        float outlineRadius{render::kTownSilhouetteRadius};
+    };
+    std::array<std::array<TownArtLayer, render::kTownArtStageCount>, render::kTownArtBuildingCount> townLayers_{};
+    render::Texture townAdventure_;
+    TownSpriteFrame townAdventureFrame_{};
     bool townBackdropReady_{false};
     bool hoveredExit_{false};
     std::unordered_set<std::uint32_t> laneMobIds_{};
@@ -3722,14 +3735,62 @@ struct GameApplication::Impl {
         return upright;
     }
 
-    void uploadTownPlate(const int index, const render::TownPlateKind kind, const bool restored) {
-        const int plateW = kind == render::TownPlateKind::Road ? 160 : 160;
-        const int plateH = kind == render::TownPlateKind::Road ? 210 : 210;
-        const render::TownPixelBuffer image = render::paintTownPlate(kind, restored, plateW, plateH);
-        townFrames_[static_cast<std::size_t>(index)] = scanTownFrame(image.rgba.data(), image.width, image.height);
-        const std::vector<std::uint8_t> upright = flipTownImage(image);
-        static_cast<void>(townPlates_[static_cast<std::size_t>(index)].uploadRgba(
-            image.width, image.height, upright.data(), true));
+    void clearTownArt() {
+        for (auto& building : townLayers_) {
+            for (auto& layer : building) {
+                layer = TownArtLayer{};
+            }
+        }
+        townAdventure_ = render::Texture{};
+        townAdventureFrame_ = {};
+    }
+
+    [[nodiscard]] std::vector<std::uint8_t> flipRgba(const std::uint8_t* pixels, const int width, const int height) const {
+        std::vector<std::uint8_t> upright(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4U);
+        const int stride = width * 4;
+        for (int y = 0; y < height; ++y) {
+            const std::uint8_t* src = pixels + static_cast<std::size_t>(y) * static_cast<std::size_t>(stride);
+            std::uint8_t* dst = upright.data() + static_cast<std::size_t>(height - 1 - y) * static_cast<std::size_t>(stride);
+            std::copy(src, src + stride, dst);
+        }
+        return upright;
+    }
+
+    void uploadTownLayerPixels(TownArtLayer& layer, const std::uint8_t* pixels, const int width, const int height) {
+        layer.imageWidth = width;
+        layer.imageHeight = height;
+        layer.frame = scanTownFrame(pixels, width, height);
+        layer.outlineRadius = render::kTownSilhouetteRadius;
+        const render::TownSilhouette silhouette =
+            render::buildTownSilhouette(pixels, width, height, layer.outlineRadius);
+        layer.alpha = silhouette.alpha;
+        const std::vector<std::uint8_t> color = flipRgba(pixels, width, height);
+        const std::vector<std::uint8_t> outline = flipRgba(silhouette.outline.data(), width, height);
+        static_cast<void>(layer.color.uploadRgba(width, height, color.data(), true));
+        static_cast<void>(layer.outline.uploadRgba(width, height, outline.data(), true));
+    }
+
+    [[nodiscard]] bool loadTownLayerFile(TownArtLayer& layer, const std::string& path) {
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        stbi_set_flip_vertically_on_load(0);
+        unsigned char* pixels = stbi_load(path.c_str(), &width, &height, &channels, 4);
+        if (pixels == nullptr || width <= 0 || height <= 0) {
+            return false;
+        }
+        uploadTownLayerPixels(layer, pixels, width, height);
+        stbi_image_free(pixels);
+        return layer.color.isValid();
+    }
+
+    void uploadTownPlate(const int building, const int stage, const render::TownPlateKind kind, const bool restored) {
+        const render::TownPixelBuffer image = render::paintTownPlate(kind, restored, 160, 210);
+        uploadTownLayerPixels(
+            townLayers_[static_cast<std::size_t>(building)][static_cast<std::size_t>(stage)],
+            image.rgba.data(),
+            image.width,
+            image.height);
     }
 
     [[nodiscard]] TownSpriteFrame scanTownFrame(const unsigned char* pixels, const int width, const int height) const {
@@ -3762,45 +3823,41 @@ struct GameApplication::Impl {
         return frame;
     }
 
-    [[nodiscard]] TownSpriteFrame scanTownFile(const std::string& path) const {
-        int width = 0;
-        int height = 0;
-        int channels = 0;
-        stbi_set_flip_vertically_on_load(0);
-        unsigned char* pixels = stbi_load(path.c_str(), &width, &height, &channels, 4);
-        if (pixels == nullptr) {
-            return {};
-        }
-        const TownSpriteFrame frame = scanTownFrame(pixels, width, height);
-        stbi_image_free(pixels);
-        return frame;
-    }
-
     [[nodiscard]] bool loadTownTextures() {
         const std::string dir = joinPath(assetsRoot, "textures/town");
         if (!townBackdrop_.loadFromFile(dir + "/backdrop.png", true)) {
             return false;
         }
-        const char* files[7] = {
-            "forge_ruined.png",
-            "forge_repaired.png",
-            "chapel_ruined.png",
-            "chapel_repaired.png",
-            "tavern_ruined.png",
-            "tavern_repaired.png",
-            "adventure.png"};
-        for (int index = 0; index < 6; ++index) {
-            const std::string path = dir + "/" + files[index];
-            townFrames_[static_cast<std::size_t>(index)] = scanTownFile(path);
-            if (!townPlates_[static_cast<std::size_t>(index)].loadFromFile(path, true)) {
-                return false;
+        for (int building = 0; building < render::kTownArtBuildingCount; ++building) {
+            for (int stage = 0; stage < render::kTownArtStageCount; ++stage) {
+                TownArtLayer& layer = townLayers_[static_cast<std::size_t>(building)][static_cast<std::size_t>(stage)];
+                const std::string path = dir + "/" + render::townStageFile(building, stage);
+                if (!loadTownLayerFile(layer, path)) {
+                    layer = TownArtLayer{};
+                    if (render::townStageRequired(stage)) {
+                        return false;
+                    }
+                }
             }
         }
         const std::string adventurePath = dir + "/adventure.png";
-        townFrames_[6] = scanTownFile(adventurePath);
-        if (!townPlates_[6].loadFromFile(adventurePath, true)) {
-            townPlates_[6] = render::Texture{};
-            townFrames_[6] = {};
+        int adventureWidth = 0;
+        int adventureHeight = 0;
+        int adventureChannels = 0;
+        stbi_set_flip_vertically_on_load(0);
+        unsigned char* adventurePixels =
+            stbi_load(adventurePath.c_str(), &adventureWidth, &adventureHeight, &adventureChannels, 4);
+        if (adventurePixels != nullptr) {
+            townAdventureFrame_ = scanTownFrame(adventurePixels, adventureWidth, adventureHeight);
+            const std::vector<std::uint8_t> upright = flipRgba(adventurePixels, adventureWidth, adventureHeight);
+            if (!townAdventure_.uploadRgba(adventureWidth, adventureHeight, upright.data(), true)) {
+                townAdventure_ = render::Texture{};
+                townAdventureFrame_ = {};
+            }
+            stbi_image_free(adventurePixels);
+        } else {
+            townAdventure_ = render::Texture{};
+            townAdventureFrame_ = {};
         }
         return true;
     }
@@ -3814,17 +3871,16 @@ struct GameApplication::Impl {
             logInfo("Town art loaded from textures/town.");
             return;
         }
+        clearTownArt();
         const render::TownPixelBuffer image = render::paintTownBackdrop(480, 270);
         const std::vector<std::uint8_t> upright = flipTownImage(image);
         townBackdropReady_ = townBackdrop_.uploadRgba(image.width, image.height, upright.data(), true);
-        uploadTownPlate(0, render::TownPlateKind::Forge, false);
-        uploadTownPlate(1, render::TownPlateKind::Forge, true);
-        uploadTownPlate(2, render::TownPlateKind::Chapel, false);
-        uploadTownPlate(3, render::TownPlateKind::Chapel, true);
-        uploadTownPlate(4, render::TownPlateKind::Tavern, false);
-        uploadTownPlate(5, render::TownPlateKind::Tavern, true);
-        townPlates_[6] = render::Texture{};
-        townFrames_[6] = {};
+        uploadTownPlate(0, static_cast<int>(render::TownArtStage::Ruined), render::TownPlateKind::Forge, false);
+        uploadTownPlate(0, static_cast<int>(render::TownArtStage::Restored), render::TownPlateKind::Forge, true);
+        uploadTownPlate(1, static_cast<int>(render::TownArtStage::Ruined), render::TownPlateKind::Tavern, false);
+        uploadTownPlate(1, static_cast<int>(render::TownArtStage::Restored), render::TownPlateKind::Tavern, true);
+        uploadTownPlate(2, static_cast<int>(render::TownArtStage::Ruined), render::TownPlateKind::Chapel, false);
+        uploadTownPlate(2, static_cast<int>(render::TownArtStage::Restored), render::TownPlateKind::Chapel, true);
         logInfo("Town art files missing; using the painted fallback.");
     }
 
@@ -3862,42 +3918,72 @@ struct GameApplication::Impl {
         logInfo(hudMessage);
     }
 
-    [[nodiscard]] int townPlateIndex(const systems::TownBuilding building) const noexcept {
-        const bool repaired = townHub_.isRepaired(building);
+    [[nodiscard]] int townBuildingSlot(const systems::TownBuilding building) const noexcept {
         switch (building) {
         case systems::TownBuilding::Blacksmith:
-            return repaired ? 1 : 0;
-        case systems::TownBuilding::Healer:
-            return repaired ? 3 : 2;
+            return 0;
         case systems::TownBuilding::Tavern:
-            return repaired ? 5 : 4;
+            return 1;
+        case systems::TownBuilding::Healer:
+            return 2;
         case systems::TownBuilding::Count:
             break;
         }
         return 0;
     }
 
-    [[nodiscard]] ui::Rect townSpriteRect(const ui::Rect& hotspot, const int plateIndex) const {
+    [[nodiscard]] int townVisualStage(const systems::TownBuilding building) const noexcept {
+        const int slot = townBuildingSlot(building);
+        bool present[render::kTownArtStageCount] = {};
+        for (int stage = 0; stage < render::kTownArtStageCount; ++stage) {
+            present[stage] = townLayers_[static_cast<std::size_t>(slot)][static_cast<std::size_t>(stage)].color.isValid();
+        }
+        return render::townResolvedArtStage(render::townArtStage(townHub_.isRepaired(building)), present);
+    }
+
+    [[nodiscard]] const TownArtLayer& townArt(const systems::TownBuilding building) const noexcept {
+        return townLayers_[static_cast<std::size_t>(townBuildingSlot(building))]
+                          [static_cast<std::size_t>(townVisualStage(building))];
+    }
+
+    [[nodiscard]] ui::Rect townSpriteRect(const ui::Rect& hotspot, const TownArtLayer& layer) const {
         const ui::Rect art = ui::townBuildingArtRect(hotspot);
-        const render::Texture& plate = townPlates_[static_cast<std::size_t>(plateIndex)];
-        if (!plate.isValid()) {
+        if (!layer.color.isValid() || layer.imageWidth <= 0 || layer.imageHeight <= 0) {
             return art;
         }
-        const TownSpriteFrame frame = townFrames_[static_cast<std::size_t>(plateIndex)];
         return ui::townOpaqueSpriteRect(
             art,
-            static_cast<float>(plate.width()),
-            static_cast<float>(plate.height()),
-            frame.u0,
-            frame.v0,
-            frame.u1,
-            frame.v1);
+            static_cast<float>(layer.imageWidth),
+            static_cast<float>(layer.imageHeight),
+            layer.frame.u0,
+            layer.frame.v0,
+            layer.frame.u1,
+            layer.frame.v1);
     }
 
     [[nodiscard]] bool townBuildingContains(
-        const ui::Rect& hotspot, const int plateIndex, const float x, const float y) const {
-        return townSpriteRect(hotspot, plateIndex).contains(x, y) ||
-            ui::townBuildingCaptionRect(hotspot).contains(x, y);
+        const ui::Rect& hotspot, const TownArtLayer& layer, const float x, const float y) const {
+        if (ui::townBuildingCaptionRect(hotspot).contains(x, y)) {
+            return true;
+        }
+        const ui::Rect sprite = townSpriteRect(hotspot, layer);
+        if (layer.alpha.empty()) {
+            return sprite.contains(x, y);
+        }
+        return render::townSpriteOpaqueAt(
+            layer.alpha.data(),
+            layer.imageWidth,
+            layer.imageHeight,
+            layer.frame.u0,
+            layer.frame.v0,
+            layer.frame.u1,
+            layer.frame.v1,
+            sprite.x,
+            sprite.y,
+            sprite.width,
+            sprite.height,
+            x,
+            y);
     }
 
     void dismissBuildingUi() {
@@ -3953,7 +4039,7 @@ struct GameApplication::Impl {
             systems::TownBuilding::Healer};
         for (int index = 0; index < 3; ++index) {
             const systems::TownBuilding building = buildings[index];
-            if (!townBuildingContains(hotspots[index], townPlateIndex(building), mouseX, mouseY)) {
+            if (!townBuildingContains(hotspots[index], townArt(building), mouseX, mouseY)) {
                 continue;
             }
             if (!townHub_.isRepaired(building)) {
@@ -4004,11 +4090,11 @@ struct GameApplication::Impl {
             hoveredTownHotspot_ = 3;
             return;
         }
-        if (townBuildingContains(layout.blacksmith, townPlateIndex(systems::TownBuilding::Blacksmith), mouseX, mouseY)) {
+        if (townBuildingContains(layout.blacksmith, townArt(systems::TownBuilding::Blacksmith), mouseX, mouseY)) {
             hoveredTownHotspot_ = 0;
-        } else if (townBuildingContains(layout.tavern, townPlateIndex(systems::TownBuilding::Tavern), mouseX, mouseY)) {
+        } else if (townBuildingContains(layout.tavern, townArt(systems::TownBuilding::Tavern), mouseX, mouseY)) {
             hoveredTownHotspot_ = 1;
-        } else if (townBuildingContains(layout.healer, townPlateIndex(systems::TownBuilding::Healer), mouseX, mouseY)) {
+        } else if (townBuildingContains(layout.healer, townArt(systems::TownBuilding::Healer), mouseX, mouseY)) {
             hoveredTownHotspot_ = 2;
         }
     }
@@ -4035,11 +4121,54 @@ struct GameApplication::Impl {
         uiRenderer.drawFilledRect(icon.x + icon.width - pad - guard, icon.y + pad, guard * 2.2F, guard, grip);
     }
 
-    void drawTownHoverOutline(const ui::Rect& rect) const {
-        const float pad = 4.0F;
-        const float gold[4] = {1.0F, 0.84F, 0.32F, 1.0F};
-        uiRenderer.drawOutlineRect(
-            rect.x - pad, rect.y - pad, rect.width + pad * 2.0F, rect.height + pad * 2.0F, gold, 3.0F);
+    void drawTownSilhouette(const TownArtLayer& layer, const ui::Rect& sprite) const {
+        if (!layer.outline.isValid() || sprite.width < 2.0F || sprite.height < 2.0F || layer.imageWidth <= 0 ||
+            layer.imageHeight <= 0) {
+            return;
+        }
+        const float imageW = static_cast<float>(layer.imageWidth);
+        const float imageH = static_cast<float>(layer.imageHeight);
+        const float spanU = std::max(0.01F, layer.frame.u1 - layer.frame.u0);
+        const float spanV = std::max(0.01F, layer.frame.v1 - layer.frame.v0);
+        const float texelX = sprite.width / (spanU * imageW);
+        const float texelY = sprite.height / (spanV * imageH);
+        const float pad = layer.outlineRadius;
+        float u0 = layer.frame.u0 - pad / imageW;
+        float u1 = layer.frame.u1 + pad / imageW;
+        float v0 = layer.frame.v0 - pad / imageH;
+        float v1 = layer.frame.v1 + pad / imageH;
+        float padL = pad * texelX;
+        float padR = pad * texelX;
+        float padT = pad * texelY;
+        float padB = pad * texelY;
+        if (u0 < 0.0F) {
+            padL += u0 * imageW * texelX;
+            u0 = 0.0F;
+        }
+        if (u1 > 1.0F) {
+            padR -= (u1 - 1.0F) * imageW * texelX;
+            u1 = 1.0F;
+        }
+        if (v0 < 0.0F) {
+            padT += v0 * imageH * texelY;
+            v0 = 0.0F;
+        }
+        if (v1 > 1.0F) {
+            padB -= (v1 - 1.0F) * imageH * texelY;
+            v1 = 1.0F;
+        }
+        const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+        uiRenderer.drawTexturedRectUV(
+            layer.outline,
+            sprite.x - padL,
+            sprite.y - padT,
+            sprite.width + padL + padR,
+            sprite.height + padT + padB,
+            u0,
+            1.0F - v1,
+            u1,
+            1.0F - v0,
+            white);
     }
 
     void drawReadableCentered(const ui::Rect& bounds, const char* text, float scale, const float color[4]) const {
@@ -4085,12 +4214,13 @@ struct GameApplication::Impl {
             }
             const float plate[4] = {0.07F, 0.04F, 0.02F, 0.92F};
             uiRenderer.drawFilledRect(notice.x, notice.y, notice.width, notice.height, plate);
-            drawRpgFrame(notice, 3.0F);
+            const float bannerGold[4] = {0.86F, 0.62F, 0.22F, 1.0F};
+            uiRenderer.drawOutlineRect(notice.x, notice.y, notice.width, notice.height, bannerGold, 2.0F);
         }
         const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
         const auto paintBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building, const int hotspotIndex) {
-            const int plateIndex = townPlateIndex(building);
-            const ui::Rect sprite = townSpriteRect(rect, plateIndex);
+            const TownArtLayer& layer = townArt(building);
+            const ui::Rect sprite = townSpriteRect(rect, layer);
             if (townHub_.isRepaired(building)) {
                 const float glow[4] = {1.0F, 0.72F, 0.28F, 0.22F};
                 uiRenderer.drawFilledCircle(
@@ -4100,23 +4230,21 @@ struct GameApplication::Impl {
                     glow,
                     22);
             }
-            const render::Texture& plate = townPlates_[static_cast<std::size_t>(plateIndex)];
-            const TownSpriteFrame frame = townFrames_[static_cast<std::size_t>(plateIndex)];
-            if (plate.isValid()) {
+            if (layer.color.isValid()) {
                 uiRenderer.drawTexturedRectUV(
-                    plate,
+                    layer.color,
                     sprite.x,
                     sprite.y,
                     sprite.width,
                     sprite.height,
-                    frame.u0,
-                    1.0F - frame.v1,
-                    frame.u1,
-                    1.0F - frame.v0,
+                    layer.frame.u0,
+                    1.0F - layer.frame.v1,
+                    layer.frame.u1,
+                    1.0F - layer.frame.v0,
                     white);
             }
             if (hoveredTownHotspot_ == hotspotIndex) {
-                drawTownHoverOutline(sprite);
+                drawTownSilhouette(layer, sprite);
             }
             const ui::Rect caption = ui::townBuildingCaptionRect(rect);
             const float banner[4] = {0.08F, 0.045F, 0.02F, 0.94F};
@@ -4134,18 +4262,18 @@ struct GameApplication::Impl {
             layout.road.y + layout.road.height * 0.08F,
             layout.road.width * 0.72F,
             layout.road.height * 0.52F};
-        if (townPlates_[6].isValid()) {
-            const TownSpriteFrame frame = townFrames_[6];
+        if (townAdventure_.isValid()) {
+            const TownSpriteFrame frame = townAdventureFrame_;
             const ui::Rect iconSprite = ui::townOpaqueSpriteRect(
                 swordIcon,
-                static_cast<float>(townPlates_[6].width()),
-                static_cast<float>(townPlates_[6].height()),
+                static_cast<float>(townAdventure_.width()),
+                static_cast<float>(townAdventure_.height()),
                 frame.u0,
                 frame.v0,
                 frame.u1,
                 frame.v1);
             uiRenderer.drawTexturedRectUV(
-                townPlates_[6],
+                townAdventure_,
                 iconSprite.x,
                 iconSprite.y,
                 iconSprite.width,
@@ -4157,9 +4285,6 @@ struct GameApplication::Impl {
                 white);
         } else {
             drawCrossedSwords(swordIcon);
-        }
-        if (hoveredTownHotspot_ == 3) {
-            drawTownHoverOutline(layout.road);
         }
 
         if (tavernPanelOpen_ || healerPanelOpen_) {
@@ -6426,8 +6551,12 @@ struct GameApplication::Impl {
             0.0F, 0.0F, static_cast<float>(window.width()), static_cast<float>(window.height()), color);
     }
 
+    [[nodiscard]] bool townNoticeVisible() const noexcept {
+        return zoneManager.activeZone() == gameplay::WorldZone::TOWN && !laneActive_ && !nodeMapOpen_;
+    }
+
     void renderHudInfoStrip() {
-        if (hudMessage.empty()) {
+        if (hudMessage.empty() || townNoticeVisible()) {
             return;
         }
 
@@ -6436,7 +6565,7 @@ struct GameApplication::Impl {
     }
 
     void renderHudInfoStripLabel() const {
-        if (hudMessage.empty()) {
+        if (hudMessage.empty() || townNoticeVisible()) {
             return;
         }
 
