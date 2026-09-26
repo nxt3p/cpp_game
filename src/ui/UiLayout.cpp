@@ -865,7 +865,11 @@ TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept {
 }
 
 Rect townBuildingArtRect(const Rect& hotspot) noexcept {
-    const float captionH = std::min(48.0F, std::max(28.0F, hotspot.height * 0.16F));
+    float captionH = std::clamp(hotspot.height * 0.18F, 44.0F, 72.0F);
+    const float cap = hotspot.height * 0.42F;
+    if (captionH > cap) {
+        captionH = cap;
+    }
     return {hotspot.x, hotspot.y, hotspot.width, std::max(1.0F, hotspot.height - captionH - 8.0F)};
 }
 
@@ -874,6 +878,22 @@ Rect townBuildingCaptionRect(const Rect& hotspot) noexcept {
     const float width = std::min(std::max(48.0F, hotspot.width - 28.0F), 320.0F);
     const float height = std::max(24.0F, hotspot.y + hotspot.height - (art.y + art.height) - 6.0F);
     return {hotspot.x + (hotspot.width - width) * 0.5F, art.y + art.height + 4.0F, width, height};
+}
+
+int townHotspotIndexAt(const TownSceneLayout& layout, const float x, const float y) noexcept {
+    if (layout.blacksmith.contains(x, y)) {
+        return 0;
+    }
+    if (layout.tavern.contains(x, y)) {
+        return 1;
+    }
+    if (layout.healer.contains(x, y)) {
+        return 2;
+    }
+    if (layout.road.contains(x, y)) {
+        return 3;
+    }
+    return -1;
 }
 
 Rect townBuildingRect(const TownSceneLayout& layout, const int buildingIndex) noexcept {

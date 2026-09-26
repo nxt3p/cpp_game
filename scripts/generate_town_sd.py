@@ -22,6 +22,13 @@ Flux (after the license click and ``huggingface-cli login``)::
 ``--dry-run`` prints model ids and prompts. ``--placeholders`` rewrites the
 committed pixel-art stand-ins with Pillow and does not need CUDA. A GPU run
 overwrites those files.
+
+SDXL and Flux paint an opaque canvas. ``--cutouts`` (no GPU) punches the flat
+sky and gray mats, keeps the largest sprite, and crops it so the plates blend
+over the dusk backdrop. A GPU run does that step automatically. Reprocess the
+committed plates on any machine with Pillow::
+
+  python scripts/generate_town_sd.py --cutouts
 """
 
 from __future__ import annotations
@@ -315,6 +322,122 @@ def key_gray(image, tolerance: int = 42):
     return image
 
 
+def _is_matte(red: int, green: int, blue: int, road: bool) -> bool:
+    """Flat sky, paper-white, and (for the road plate) the gray studio slab."""
+    lum = (red + green + blue) / 3.0
+    sat = max(red, green, blue) - min(red, green, blue)
+    if lum >= 145 and sat <= 34:
+        return True
+    if blue >= 165 and blue >= red + 12 and lum >= 150 and sat <= 90:
+        return True
+    if road and lum >= 108 and sat <= 20:
+        return True
+    return False
+
+
+def isolate_plate(image, road: bool = False, pad: int = 6, crop: bool = False):
+    """Punch studio backgrounds and keep the largest connected sprite.
+
+    Diffusion plates ship as opaque rectangles. Corner chroma-key misses the
+    light-blue sky boxed inside the building, and extra doors stay as floating
+    cutouts. This clears those mats everywhere and drops the smaller pieces.
+    The canvas size stays put so the engine can keep stretching each plate
+    into its hotspot. ``crop`` is only for previews.
+    """
+    image = image.convert("RGBA")
+    width, height = image.size
+    raw = bytearray(image.tobytes())
+    count = width * height
+
+    for pixel in range(count):
+        index = pixel * 4
+        alpha = raw[index + 3]
+        if alpha < 20 or _is_matte(raw[index], raw[index + 1], raw[index + 2], road):
+            raw[index : index + 4] = b"\x00\x00\x00\x00"
+
+    seen = bytearray(count)
+    best_pixels: list[int] = []
+    for start in range(count):
+        if seen[start] or raw[start * 4 + 3] < 48:
+            seen[start] = 1
+            continue
+        stack = [start]
+        seen[start] = 1
+        component: list[int] = []
+        min_x = width
+        min_y = height
+        max_x = 0
+        max_y = 0
+        while stack:
+            pixel = stack.pop()
+            component.append(pixel)
+            x = pixel % width
+            y = pixel // width
+            if x < min_x:
+                min_x = x
+            if y < min_y:
+                min_y = y
+            if x > max_x:
+                max_x = x
+            if y > max_y:
+                max_y = y
+            for neighbor in (pixel - 1, pixel + 1, pixel - width, pixel + width):
+                if neighbor < 0 or neighbor >= count or seen[neighbor]:
+                    continue
+                if neighbor == pixel - 1 and x == 0:
+                    continue
+                if neighbor == pixel + 1 and x == width - 1:
+                    continue
+                if raw[neighbor * 4 + 3] < 48:
+                    seen[neighbor] = 1
+                    continue
+                seen[neighbor] = 1
+                stack.append(neighbor)
+        if len(component) > len(best_pixels):
+            best_pixels = component
+            best_box = (min_x, min_y, max_x, max_y)
+
+    Image, _draw = require_pillow()
+    if len(best_pixels) < 64:
+        return Image.frombytes("RGBA", (width, height), bytes(raw))
+
+    keep = bytearray(count)
+    for pixel in best_pixels:
+        keep[pixel] = 1
+        x = pixel % width
+        y = pixel // width
+        for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if 0 <= nx < width and 0 <= ny < height and raw[(ny * width + nx) * 4 + 3] > 0:
+                keep[ny * width + nx] = 1
+    for pixel in range(count):
+        if not keep[pixel]:
+            raw[pixel * 4 : pixel * 4 + 4] = b"\x00\x00\x00\x00"
+
+    plate = Image.frombytes("RGBA", (width, height), bytes(raw))
+    if not crop:
+        return plate
+    min_x, min_y, max_x, max_y = best_box
+    left = max(0, min_x - pad)
+    top = max(0, min_y - pad)
+    right = min(width, max_x + pad + 1)
+    bottom = min(height, max_y + pad + 1)
+    return plate.crop((left, top, right, bottom))
+
+
+def write_cutouts() -> None:
+    Image, _draw = require_pillow()
+    for name, _subject, _width, _height, _seed, keyed in JOBS:
+        if not keyed:
+            continue
+        path = OUT / f"{name}.png"
+        if not path.exists():
+            raise SystemExit(f"missing {path}; generate or restore the town plates first")
+        image = isolate_plate(Image.open(path), road=(name == "road"))
+        image.save(path)
+        opaque = sum(1 for pixel in image.get_flattened_data() if pixel[3] >= 48)
+        print(f"cutout {path.name} {image.size[0]}x{image.size[1]} opaque {opaque}")
+
+
 def run_generation(backend: str, steps: int, cpu_offload: bool) -> None:
     try:
         import torch
@@ -384,7 +507,7 @@ def run_generation(backend: str, steps: int, cpu_offload: bool) -> None:
             image = pipe(**kwargs).images[0].convert("RGBA")
             image.save(cache_path)
         if keyed:
-            image = key_gray(image)
+            image = isolate_plate(key_gray(image), road=(name == "road"))
         path = OUT / f"{name}.png"
         image.save(path)
         print(f"wrote {path}")
@@ -417,6 +540,11 @@ def main() -> None:
         action="store_true",
         help="Write the pixel-art stand-ins with Pillow. Does not call a GPU.",
     )
+    parser.add_argument(
+        "--cutouts",
+        action="store_true",
+        help="Punch transparent backgrounds on the town plates already in assets/textures/town. No GPU.",
+    )
     args = parser.parse_args()
     steps = args.steps or (28 if args.backend == "flux" else 30)
     if args.dry_run:
@@ -424,6 +552,9 @@ def main() -> None:
         return
     if args.placeholders:
         write_placeholders()
+        return
+    if args.cutouts:
+        write_cutouts()
         return
     if args.backend == "flux" and not args.cpu_offload:
         print("Flux on 16 GB: pass --cpu-offload if the 5080 is the 16 GB card.")

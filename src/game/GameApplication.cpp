@@ -416,6 +416,7 @@ struct GameApplication::Impl {
     bool tavernPanelOpen_{false};
     bool healerPanelOpen_{false};
     std::string townNotice_{};
+    int hoveredTownHotspot_{-1};
     render::Texture townBackdrop_{};
     std::array<render::Texture, 7> townPlates_{};
     bool townBackdropReady_{false};
@@ -3865,6 +3866,44 @@ struct GameApplication::Impl {
         }
     }
 
+    void updateTownHover(const float mouseX, const float mouseY) {
+        hoveredTownHotspot_ = -1;
+        if (laneActive_ || zoneManager.allowsFreeMovement() || nodeMapOpen_ || stateManager.isPausedForUi()) {
+            return;
+        }
+        const ui::TownSceneLayout layout = ui::computeTownSceneLayout(currentUiScale());
+        if ((tavernPanelOpen_ || healerPanelOpen_) && layout.servicePanel.contains(mouseX, mouseY)) {
+            return;
+        }
+        hoveredTownHotspot_ = ui::townHotspotIndexAt(layout, mouseX, mouseY);
+    }
+
+    void drawTownHoverOutline(const ui::Rect& rect) const {
+        const float pad = 4.0F;
+        const float gold[4] = {1.0F, 0.84F, 0.32F, 1.0F};
+        uiRenderer.drawOutlineRect(
+            rect.x - pad, rect.y - pad, rect.width + pad * 2.0F, rect.height + pad * 2.0F, gold, 3.0F);
+    }
+
+    void drawReadableCentered(const ui::Rect& bounds, const char* text, float scale, const float color[4]) const {
+        if (text == nullptr || text[0] == '\0') {
+            return;
+        }
+        const float measured = textRenderer.measureTextWidth(text, scale);
+        const float limit = std::max(8.0F, bounds.width - 12.0F);
+        if (measured > limit && measured > 1.0F) {
+            scale *= limit / measured;
+        }
+        const float shadow[4] = {0.02F, 0.01F, 0.0F, 0.95F};
+        const float kick = std::max(1.25F, scale * 0.5F);
+        const float offsets[4][2] = {{-kick, 0.0F}, {kick, 0.0F}, {0.0F, -kick}, {0.0F, kick}};
+        for (const auto& offset : offsets) {
+            const ui::Rect shifted{bounds.x + offset[0], bounds.y + offset[1], bounds.width, bounds.height};
+            textRenderer.drawTextCentered(shifted, text, scale, shadow);
+        }
+        textRenderer.drawTextCentered(bounds, text, scale, color);
+    }
+
     void renderTownScene() {
         if (laneActive_ || zoneManager.allowsFreeMovement()) {
             return;
@@ -3882,8 +3921,13 @@ struct GameApplication::Impl {
         }
 
         const ui::TownSceneLayout layout = ui::computeTownSceneLayout(currentUiScale());
+        if (!nodeMapOpen_) {
+            const float plate[4] = {0.07F, 0.04F, 0.02F, 0.92F};
+            uiRenderer.drawFilledRect(layout.notice.x, layout.notice.y, layout.notice.width, layout.notice.height, plate);
+            drawRpgFrame(layout.notice, 3.0F);
+        }
         const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-        const auto paintBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building, const int ruinedPlate, const int openPlate) {
+        const auto paintBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building, const int ruinedPlate, const int openPlate, const int hotspotIndex) {
             const bool repaired = townHub_.isRepaired(building);
             const ui::Rect art = ui::townBuildingArtRect(rect);
             if (repaired) {
@@ -3895,22 +3939,26 @@ struct GameApplication::Impl {
             if (plate.isValid()) {
                 uiRenderer.drawTexturedRect(plate, art.x, art.y, art.width, art.height, white);
             }
+            if (hoveredTownHotspot_ == hotspotIndex) {
+                drawTownHoverOutline(art);
+            }
             const ui::Rect caption = ui::townBuildingCaptionRect(rect);
-            const float banner[4] = {0.10F, 0.06F, 0.035F, repaired ? 0.9F : 0.72F};
+            const float banner[4] = {0.08F, 0.045F, 0.02F, 0.94F};
             uiRenderer.drawFilledRect(caption.x, caption.y, caption.width, caption.height, banner);
-            drawRpgFrame(caption, 3.5F);
+            drawRpgFrame(caption, 4.0F);
         };
 
-        paintBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith, 0, 1);
-        paintBuilding(layout.healer, systems::TownBuilding::Healer, 2, 3);
-        paintBuilding(layout.tavern, systems::TownBuilding::Tavern, 4, 5);
+        paintBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith, 0, 1, 0);
+        paintBuilding(layout.healer, systems::TownBuilding::Healer, 2, 3, 2);
+        paintBuilding(layout.tavern, systems::TownBuilding::Tavern, 4, 5, 1);
 
         if (townPlates_[6].isValid()) {
             uiRenderer.drawTexturedRect(
                 townPlates_[6], layout.road.x, layout.road.y, layout.road.width, layout.road.height, white);
         }
-        const float roadBorder[4] = {0.95F, 0.78F, 0.36F, 1.0F};
-        uiRenderer.drawOutlineRect(layout.road.x, layout.road.y, layout.road.width, layout.road.height, roadBorder, 2.0F);
+        if (hoveredTownHotspot_ == 3) {
+            drawTownHoverOutline(layout.road);
+        }
 
         if (tavernPanelOpen_ || healerPanelOpen_) {
             drawRpgPanel(layout.servicePanel);
@@ -3925,56 +3973,54 @@ struct GameApplication::Impl {
         }
 
         const ui::TownSceneLayout layout = ui::computeTownSceneLayout(currentUiScale());
-        const float title[4] = {0.96F, 0.9F, 0.72F, 1.0F};
-        const float sub[4] = {0.78F, 0.7F, 0.52F, 0.95F};
+        const float title[4] = {1.0F, 0.95F, 0.78F, 1.0F};
+        const float sub[4] = {0.98F, 0.9F, 0.68F, 1.0F};
         const auto labelBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building) {
             const systems::TownBuildingDefinition definition = systems::townBuildingDefinition(building);
             const bool repaired = townHub_.isRepaired(building);
             const ui::Rect caption = ui::townBuildingCaptionRect(rect);
-            const ui::Rect nameRect{caption.x + 6.0F, caption.y + 2.0F, caption.width - 12.0F, caption.height * 0.48F};
+            const ui::Rect nameRect{caption.x + 8.0F, caption.y + 3.0F, caption.width - 16.0F, caption.height * 0.48F};
             const ui::Rect subRect{
-                caption.x + 6.0F, nameRect.y + nameRect.height, caption.width - 12.0F, caption.height * 0.46F};
-            textRenderer.drawTextCentered(nameRect, repaired ? definition.name : definition.ruinedName, 1.35F, title);
+                caption.x + 8.0F, nameRect.y + nameRect.height, caption.width - 16.0F, caption.height * 0.46F};
+            drawReadableCentered(nameRect, repaired ? definition.name : definition.ruinedName, 2.35F, title);
             std::string detail = repaired ? definition.serviceHint
                                           : ("Repair " + std::to_string(definition.repairGold) + "g  Lv " +
                                              std::to_string(definition.requiredLevel));
-            textRenderer.drawTextCentered(subRect, detail.c_str(), 1.05F, sub);
+            drawReadableCentered(subRect, detail.c_str(), 1.9F, sub);
         };
         labelBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith);
         labelBuilding(layout.healer, systems::TownBuilding::Healer);
         labelBuilding(layout.tavern, systems::TownBuilding::Tavern);
-        textRenderer.drawTextCentered(layout.road, "The Road", 1.6F, title);
+        drawReadableCentered(layout.road, "The Road", 2.15F, title);
 
         if (tavernPanelOpen_ || healerPanelOpen_) {
-            const float body[4] = {0.9F, 0.84F, 0.7F, 1.0F};
+            const float body[4] = {0.98F, 0.92F, 0.78F, 1.0F};
             const char* titleText = tavernPanelOpen_ ? "Tavern gamble" : "Chapel";
-            textRenderer.drawTextCentered(layout.serviceTitle, titleText, 1.6F, title);
+            drawReadableCentered(layout.serviceTitle, titleText, 2.15F, title);
             const char* bodyText = tavernPanelOpen_
                 ? "Pay 25 gold. Most spins pay coin or common scraps. Mythical is 1 in 10,000."
                 : "Pay a small tithe to restore health and mana.";
-            textRenderer.drawTextCentered(layout.serviceBody, bodyText, 1.2F, body);
-            textRenderer.drawTextCentered(layout.serviceAction, tavernPanelOpen_ ? "Spin" : "Rest", 1.5F, title);
-            textRenderer.drawTextCentered(layout.serviceClose, "Close", 1.4F, sub);
+            drawReadableCentered(layout.serviceBody, bodyText, 1.7F, body);
+            drawReadableCentered(layout.serviceAction, tavernPanelOpen_ ? "Spin" : "Rest", 1.9F, title);
+            drawReadableCentered(layout.serviceClose, "Close", 1.75F, sub);
         }
     }
 
     void renderLaneBanner() const {
         const float width = static_cast<float>(window.width());
         if (laneActive_) {
-            const ui::Rect banner{width * 0.5F - 220.0F, 4.0F, 440.0F, 22.0F};
-            const float color[4] = {0.96F, 0.9F, 0.7F, 1.0F};
-            const float shadow[4] = {0.0F, 0.0F, 0.0F, 0.85F};
-            textRenderer.drawTextCentered(banner, lane_.status(), 1.7F, shadow);
-            textRenderer.drawTextCentered(banner, lane_.status(), 1.7F, color);
+            const ui::Rect banner{width * 0.5F - 280.0F, 4.0F, 560.0F, 28.0F};
+            const float color[4] = {1.0F, 0.95F, 0.78F, 1.0F};
+            drawReadableCentered(banner, lane_.status(), 2.0F, color);
             return;
         }
         if (zoneManager.activeZone() == gameplay::WorldZone::TOWN && !nodeMapOpen_ && !laneActive_) {
-            const ui::Rect hint{width * 0.5F - 340.0F, 8.0F, 680.0F, 22.0F};
-            const float color[4] = {0.93F, 0.86F, 0.62F, 0.95F};
+            const ui::TownSceneLayout layout = ui::computeTownSceneLayout(currentUiScale());
+            const float color[4] = {1.0F, 0.96F, 0.8F, 1.0F};
             const char* line = townNotice_.empty()
                 ? "Click a ruin to repair it with gold. The road leaves town."
                 : townNotice_.c_str();
-            textRenderer.drawTextCentered(hint, line, 1.35F, color);
+            drawReadableCentered(layout.notice, line, 2.2F, color);
         }
     }
 
@@ -7823,6 +7869,7 @@ struct GameApplication::Impl {
     void renderInGameUi(float mouseX, float mouseY) {
         ensureUiHitRegionsBuilt();
         updateInventoryHover(mouseX, mouseY);
+        updateTownHover(mouseX, mouseY);
 
         uiRenderer.beginFrame();
         renderTownScene();

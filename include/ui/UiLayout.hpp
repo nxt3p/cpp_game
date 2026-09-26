@@ -149,6 +149,9 @@ struct TownSceneLayout {
 
 [[nodiscard]] Rect townBuildingRect(const TownSceneLayout& layout, int buildingIndex) noexcept;
 
+/// 0 blacksmith, 1 tavern, 2 chapel, 3 road, or -1 when the point misses every hotspot.
+[[nodiscard]] int townHotspotIndexAt(const TownSceneLayout& layout, float x, float y) noexcept;
+
 /// Building painting sits above a short caption so the label does not slice the sprite.
 [[nodiscard]] Rect townBuildingArtRect(const Rect& hotspot) noexcept;
 [[nodiscard]] Rect townBuildingCaptionRect(const Rect& hotspot) noexcept;

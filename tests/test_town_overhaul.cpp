@@ -271,7 +271,71 @@ TEST_CASE("Town captions sit under the building art", "[town][ui]") {
         CHECK_FALSE(ui::rectsOverlap(art, caption));
         CHECK(hotspot.contains(caption.x + caption.width * 0.5F, caption.y + caption.height * 0.5F));
         CHECK(art.height > caption.height);
+        CHECK(caption.height >= 56.0F);
     }
+    CHECK(town.notice.height >= 36.0F);
+    CHECK(ui::townHotspotIndexAt(town, town.blacksmith.x + 4.0F, town.blacksmith.y + 4.0F) == 0);
+    CHECK(ui::townHotspotIndexAt(town, town.tavern.x + town.tavern.width * 0.5F, town.tavern.y + 8.0F) == 1);
+    CHECK(ui::townHotspotIndexAt(town, town.healer.x + 8.0F, town.healer.y + town.healer.height * 0.5F) == 2);
+    CHECK(ui::townHotspotIndexAt(town, town.road.x + town.road.width * 0.5F, town.road.y + town.road.height * 0.5F) == 3);
+    CHECK(ui::townHotspotIndexAt(town, 2.0F, 2.0F) == -1);
+}
+
+extern "C" {
+unsigned char* stbi_load(const char* filename, int* x, int* y, int* channels_in_file, int desired_channels);
+void stbi_image_free(void* retval_from_stbi_load);
+}
+
+TEST_CASE("Town plates keep a transparent margin around the sprite", "[town]") {
+    const std::filesystem::path root{ENGINE_ASSETS_DIR};
+    const char* plates[] = {
+        "forge_ruined.png",
+        "forge_repaired.png",
+        "chapel_ruined.png",
+        "chapel_repaired.png",
+        "tavern_ruined.png",
+        "tavern_repaired.png",
+        "road.png"};
+    for (const char* file : plates) {
+        const std::filesystem::path path = root / "textures" / "town" / file;
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        unsigned char* pixels = stbi_load(path.string().c_str(), &width, &height, &channels, 4);
+        INFO(path.string());
+        REQUIRE(pixels != nullptr);
+        REQUIRE(width > 8);
+        REQUIRE(height > 8);
+        const auto alphaAt = [&](const int x, const int y) {
+            return pixels[(static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x)) * 4U + 3U];
+        };
+        CHECK(alphaAt(0, 0) == 0);
+        CHECK(alphaAt(width - 1, 0) == 0);
+        CHECK(alphaAt(0, height - 1) == 0);
+        CHECK(alphaAt(width - 1, height - 1) == 0);
+        int opaque = 0;
+        const int step = 4;
+        for (int y = 0; y < height; y += step) {
+            for (int x = 0; x < width; x += step) {
+                if (alphaAt(x, y) >= 48) {
+                    ++opaque;
+                }
+            }
+        }
+        const int samples = ((width + step - 1) / step) * ((height + step - 1) / step);
+        CHECK(opaque > 200);
+        CHECK(opaque * 2 < samples);
+        stbi_image_free(pixels);
+    }
+
+    int backdropW = 0;
+    int backdropH = 0;
+    int backdropChannels = 0;
+    const std::filesystem::path backdrop = root / "textures" / "town" / "backdrop.png";
+    unsigned char* backdropPixels = stbi_load(backdrop.string().c_str(), &backdropW, &backdropH, &backdropChannels, 4);
+    REQUIRE(backdropPixels != nullptr);
+    CHECK(backdropPixels[3] > 200);
+    stbi_image_free(backdropPixels);
 }
 
 TEST_CASE("Procedural town backdrop paints distinct original color", "[town]") {

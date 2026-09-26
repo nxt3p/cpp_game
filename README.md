@@ -150,7 +150,7 @@ Buildings start in ruins. Click one to spend gold once your level is high enough
 
 Kills pay gold and experience directly, so the first repairs come from fighting rather than from a pile of items. **The Road** (or **M**) opens the campaign map. The circular minimap stays hidden on this scene and returns on the road and in combat. Mythical items are reserved for the tavern reel at 1/10000.
 
-Town pictures live in `assets/textures/town/` (`backdrop.png`, ruined and repaired forge/chapel/tavern plates, `road.png`). The game loads those files. On the RTX 5080, regenerate them with the same SDXL LoRAs as the item atlases:
+Town pictures live in `assets/textures/town/` (`backdrop.png`, ruined and repaired forge/chapel/tavern plates, `road.png`). The game loads those files and blends them with alpha, so the plates need a real transparent background. On the RTX 5080, regenerate them with the same SDXL LoRAs as the item atlases. The script punches the flat sky and gray mats after generation:
 
 ```bash
 cd /home/dev/projects/cppGame
@@ -166,7 +166,11 @@ Flux, after accepting the license and `huggingface-cli login`:
 python scripts/generate_town_sd.py --backend flux --cpu-offload
 ```
 
-`python scripts/generate_town_sd.py --dry-run` prints prompts without a GPU. `--placeholders` rewrites the committed pixel-art stand-ins (Pillow only) if the PNGs are missing.
+`python scripts/generate_town_sd.py --dry-run` prints prompts without a GPU. `--placeholders` rewrites the committed pixel-art stand-ins (Pillow only) if the PNGs are missing. `--cutouts` re-runs only the alpha step on the PNGs already in `assets/textures/town` (Pillow, no GPU):
+
+```bash
+python scripts/generate_town_sd.py --cutouts
+```
 
 Health, mana, and menu frames are drawn in the engine (wood, metal, gold filigree), so they do not need a GPU. Skill and item icons stay on the existing atlases. To repaint those atlases on the RTX 5080:
 
