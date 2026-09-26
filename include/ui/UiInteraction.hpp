@@ -24,6 +24,7 @@ enum class WidgetKind : std::uint8_t {
     TradePlayerSellSlot,
     TradeVendorBuySlot,
     BlacksmithServiceButton,
+    HudMenuButton,
 };
 
 struct HitRegion {

@@ -4,6 +4,7 @@
 #include "systems/WeaponMastery.hpp"
 #include "ui/UiTypes.hpp"
 
+#include <cmath>
 #include <sstream>
 
 namespace systems {
@@ -280,21 +281,115 @@ std::vector<std::string> formatItemComparisonLines(
     return lines;
 }
 
-std::string formatItemTooltip(const ItemMetadata& item) {
+int estimateWeaponDps(const ItemMetadata& item) {
+    ItemMetadata resolved = item;
+    applyItemDefinition(resolved);
+    if (resolved.category != ItemCategory::Weapon && resolved.category != ItemCategory::OffHand) {
+        return 0;
+    }
+
+    const float speed = std::max(0.45F, 0.85F + resolved.bonuses.attackSpeed);
+    const float rarityScale = 3.0F + static_cast<float>(static_cast<int>(resolved.rarity)) * 2.0F;
+    const float raw =
+        (8.0F + static_cast<float>(resolved.bonuses.damage) + static_cast<float>(std::max(resolved.itemLevel, 1)) * 1.5F) *
+        speed * rarityScale;
+    return std::max(1, static_cast<int>(std::lround(raw)));
+}
+
+ItemTooltipCard buildItemTooltipCard(const ItemMetadata& item, const char* const banner) {
     ItemMetadata resolved = item;
     applyItemDefinition(resolved);
 
-    std::ostringstream tooltip;
-    tooltip << resolved.name << '\n';
-    tooltip << rarityLabel(resolved.rarity) << " " << itemCategoryLabel(resolved.category);
-    if (resolved.itemLevel > 1) {
-        tooltip << "  (Lv " << resolved.itemLevel << ')';
+    ItemTooltipCard card{};
+    card.rarity = resolved.rarity;
+    if (banner != nullptr && banner[0] != '\0') {
+        card.lines.push_back(TooltipLine{banner, TooltipTone::Meta});
     }
+
+    card.lines.push_back(TooltipLine{resolved.name, TooltipTone::Title});
+
+    std::ostringstream meta;
+    meta << rarityLabel(resolved.rarity) << ' ' << itemCategoryLabel(resolved.category) << "  ilvl "
+         << std::max(resolved.itemLevel, 1);
     if (resolved.upgradeLevel > 0) {
-        tooltip << "  [+" << resolved.upgradeLevel << ']';
+        meta << "  +" << resolved.upgradeLevel;
     }
-    for (const std::string& line : formatItemStatLines(resolved)) {
-        tooltip << '\n' << line;
+    card.lines.push_back(TooltipLine{meta.str(), TooltipTone::Meta});
+
+    if (resolved.category == ItemCategory::Weapon || resolved.category == ItemCategory::OffHand) {
+        card.lines.push_back(TooltipLine{std::to_string(estimateWeaponDps(resolved)) + " DPS", TooltipTone::Headline});
+        const float speed = std::max(0.45F, 0.85F + resolved.bonuses.attackSpeed);
+        std::ostringstream speedLine;
+        speedLine.setf(std::ios::fixed);
+        speedLine.precision(2);
+        speedLine << speed << " Weapon Speed";
+        card.lines.push_back(TooltipLine{speedLine.str(), TooltipTone::Meta});
+    }
+
+    const auto pushStat = [&](const int value, const char* label, const TooltipTone tone) {
+        if (value == 0) {
+            return;
+        }
+        card.lines.push_back(TooltipLine{(value > 0 ? "+" : "") + std::to_string(value) + " " + label, tone});
+    };
+
+    pushStat(resolved.bonuses.strength, "Strength", TooltipTone::Attribute);
+    pushStat(resolved.bonuses.dexterity, "Dexterity", TooltipTone::Attribute);
+    pushStat(resolved.bonuses.vitality, "Vitality", TooltipTone::Attribute);
+    pushStat(resolved.bonuses.maxHealth, "Health", TooltipTone::Attribute);
+    pushStat(resolved.bonuses.damage, "Damage", TooltipTone::Effect);
+    if (resolved.bonuses.attackSpeed > 0.001F) {
+        std::ostringstream line;
+        line << "+" << resolved.bonuses.attackSpeed << " Attack Speed";
+        card.lines.push_back(TooltipLine{line.str(), TooltipTone::Attribute});
+    }
+    if (resolved.bonuses.lightRadius > 0.001F) {
+        std::ostringstream line;
+        line << "+" << resolved.bonuses.lightRadius << " Light Radius";
+        card.lines.push_back(TooltipLine{line.str(), TooltipTone::Effect});
+    }
+
+    const ItemStatBonuses mastery = weaponMasteryBonuses(resolved);
+    if (mastery.damage > 0) {
+        card.lines.push_back(
+            TooltipLine{"+" + std::to_string(mastery.damage) + " Mastery Damage", TooltipTone::Effect});
+    }
+    if (mastery.attackSpeed > 0.001F) {
+        std::ostringstream line;
+        line << "+" << mastery.attackSpeed << " Mastery Attack Speed";
+        card.lines.push_back(TooltipLine{line.str(), TooltipTone::Effect});
+    }
+    const std::string masteryLine = formatWeaponMasteryLine(resolved);
+    if (!masteryLine.empty()) {
+        card.lines.push_back(TooltipLine{masteryLine, TooltipTone::Effect});
+    }
+    if (resolved.sockets > 0) {
+        card.lines.push_back(TooltipLine{
+            std::to_string(resolved.sockets) + (resolved.sockets == 1 ? " empty socket" : " empty sockets"),
+            TooltipTone::Effect});
+    }
+    if (resolved.category == ItemCategory::Consumable) {
+        card.lines.push_back(TooltipLine{"Restores health when used (Q)", TooltipTone::Effect});
+    } else if (resolved.category == ItemCategory::Material) {
+        card.lines.push_back(TooltipLine{"Crafting material — sells well", TooltipTone::Effect});
+    } else if (resolved.category == ItemCategory::Misc && resolved.bonuses.damage == 0 && resolved.bonuses.strength == 0) {
+        card.lines.push_back(TooltipLine{"Junk. Sell it.", TooltipTone::Meta});
+    }
+
+    if (resolved.value > 0) {
+        card.lines.push_back(TooltipLine{"Price " + std::to_string(resolved.value) + " gold", TooltipTone::Footer});
+    }
+    return card;
+}
+
+std::string formatItemTooltip(const ItemMetadata& item) {
+    const ItemTooltipCard card = buildItemTooltipCard(item, nullptr);
+    std::ostringstream tooltip;
+    for (std::size_t index = 0; index < card.lines.size(); ++index) {
+        if (index > 0) {
+            tooltip << '\n';
+        }
+        tooltip << card.lines[index].text;
     }
     return tooltip.str();
 }

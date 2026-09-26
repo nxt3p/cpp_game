@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <string>
 
 namespace ui {
 
@@ -59,6 +60,23 @@ std::string truncateWithEllipsis(
     const float maxWidthPixels,
     const float scale) noexcept {
     return truncateWithEllipsis(text, maxWidthPixels, scale, TextWidthMeasureFn{});
+}
+
+std::string formatGroupedNumber(const int value) {
+    const bool negative = value < 0;
+    std::string digits = std::to_string(negative ? -static_cast<long long>(value) : static_cast<long long>(value));
+    std::string grouped;
+    grouped.reserve(digits.size() + digits.size() / 3);
+    for (std::size_t index = 0; index < digits.size(); ++index) {
+        if (index > 0 && (digits.size() - index) % 3 == 0) {
+            grouped.push_back(',');
+        }
+        grouped.push_back(digits[index]);
+    }
+    if (negative) {
+        grouped.insert(grouped.begin(), '-');
+    }
+    return grouped;
 }
 
 } // namespace ui

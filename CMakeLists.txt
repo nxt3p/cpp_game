@@ -65,6 +65,7 @@ set(ENGINE_GAMEPLAY_SOURCES
     src/ui/UiScale.cpp
     src/ui/UiLayout.cpp
     src/ui/HudConsoleLayout.cpp
+    src/ui/LootPresentation.cpp
     src/ui/UiTextLayout.cpp
     src/ui/UiInteraction.cpp
 )

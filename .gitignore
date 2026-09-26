@@ -16,5 +16,6 @@ _deps/
 .DS_Store
 build-release/
 scripts/__pycache__/
+assets/textures/generated/rpg_src/
 .cursor/
 *.pyc

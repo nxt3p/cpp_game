@@ -23,11 +23,11 @@ The same gameplay code runs natively (Linux/WSL/Windows) and in the browser via 
 - **Front-end flow** — Main menu, class select (Warrior / Ranger / Mage), settings, pause menu
 - **Two zones** — Town hub and Plains combat area with procedural scenery and mob spawns
 - **Combat** — Click-to-move, target mobs, melee attacks, critical hits, screen shake + hit-stop, floating damage / crit text, boss encounters
-- **Skills** — Quick-cast hotkey bar (Power Strike, Whirlwind, Heal, Dash) with mana pool and cooldowns; belt potions on **Q**
+- **Skills** — Quick-cast hotkey bar (Power Strike, Whirlwind, Heal, Dash, and four more) with mana pool and cooldowns; belt potions on **Q**. **C** opens a two-panel Abilities window (spellbook + soul talent nodes)
 - **Slot-machine loot** — Every action inserts coins into a 3-tier reel (Common / Medium / Jackpot) with pity protection; jackpots fire a light pillar, screen flash and Legendary / Unique drops
 - **Progression** — Soul-based stat upgrades in Town, weapon mastery, depth scaling, Normal / Nightmare / Hell difficulty tiers unlocked by boss kills
 - **Dark-fantasy presentation** — Torch-lit shading with cool shadows and fog, particle system (hit sparks, death bursts, spell flashes, ambient dust), 8-way sprite facing with hit / death animation states
-- **D2-style console HUD** — Health / mana globes, skill quick-slots with cooldown sweeps, potion belt, XP bar, minimap overlay
+- **Deskrawl-style HUD** — Clustered health / mana globes, level badge, skill quick-slots with cooldown sweeps, potion count, bottom-right menu icons, XP bar, minimap overlay
 - **Inventory & equipment** — Paper-doll UI, item stats, hover tooltips with stat comparison versus equipped gear, socketed items, blacksmith sell/forge services
 - **Save / load** — Single-slot saves with Continue flow; platform-specific persistence (see below)
 
@@ -128,8 +128,9 @@ Output: `build-win-x86_64/GameEngine.exe` with assets staged beside the executab
 | Input | Action |
 |-------|--------|
 | Mouse click | Menu buttons, move, attack, interact, UI |
-| **C** | Character / stat screen |
-| **I** | Inventory & equipment |
+| **C** | Abilities (spells and soul talents) |
+| **I** | Character paper-doll and inventory |
+| Bottom-right icons | **C** abilities, **I** inventory, **M** map, **S** settings, **P** pause |
 | **E** | Blacksmith trade (Town, near forge) |
 | **1 – 4** | Quick-cast skill slots (Power Strike, Whirlwind, Heal, Dash) |
 | **Q** | Drink first belt potion |
@@ -211,6 +212,44 @@ cppGame/
 | `scripts/build-windows-x86_64.sh` | Cross-compile Windows exe |
 | `scripts/clean-build.sh` | Remove all `build*` directories |
 | `scripts/slice_world_assets.py` | Slice sprite sheets for world assets |
+| `scripts/generate_assets.py` | Procedural atlases (Pillow). Fallback if no GPU |
+| `scripts/generate_rpg_atlases_sd.py` | SDXL or FLUX.1-dev + LoRA atlas replacement |
+
+## Diffusion atlases (RTX 5080)
+
+`scripts/generate_rpg_atlases_sd.py` repaints `items_atlas.png`, UI skill and menu icons, and the warrior / ranger / mage / monster sheets. It keeps the existing JSON frame and clip layout, so the game loaders do not change. Prompts are original; the sheets are not copied from another game.
+
+This cloud environment has no CUDA, so the weights are not downloaded here. On WSL with the 5080 (`/home/dev/projects/cppGame`):
+
+```bash
+cd /home/dev/projects/cppGame
+python3 -m venv .venv-diffusion
+source .venv-diffusion/bin/activate
+python -m pip install -U pip
+python -m pip install -r scripts/requirements-diffusion.txt
+python scripts/generate_rpg_atlases_sd.py --backend sdxl
+```
+
+SDXL stack (default, fits 16 GB):
+
+| Role | Repo | Trigger | Weight |
+|------|------|---------|--------|
+| Base | `stabilityai/stable-diffusion-xl-base-1.0` | | |
+| Game-icon LoRA | `nerijs/pixel-art-xl` (`pixel-art-xl.safetensors`) | `pixel` | 0.90 |
+| RPG style LoRA | `ntc-ai/SDXL-LoRA-slider.fantasy` (`fantasy.safetensors`) | `fantasy` | 1.50 |
+
+Flux stack (license-gated base; accept it on the model page, then `huggingface-cli login`):
+
+| Role | Repo | Trigger | Weight |
+|------|------|---------|--------|
+| Base | `black-forest-labs/FLUX.1-dev` | | |
+| Pixel-RPG LoRA | `AIGCDuckBoss/fluxLora_pixelRPG` (`fluxLora_pixelrpg.safetensors`) | `The overall style of the illustration is colorful pixel style` | 0.85 |
+
+```bash
+python scripts/generate_rpg_atlases_sd.py --backend flux --cpu-offload
+```
+
+`--dry-run` prints every prompt. `--check` confirms those prompts still cover `items_atlas.json` and the directional clip JSON. `--groups items` limits a run to the inventory sheet.
 
 ## Graphics Quality
 

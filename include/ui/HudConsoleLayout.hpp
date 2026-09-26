@@ -8,11 +8,12 @@
 
 namespace ui {
 
-/// Diablo-style bottom console: health globe (left), mana globe (right),
-/// hotkey skill slots and belt/potion slots in the middle, XP bar along the top edge.
+/// Deskrawl-style bottom chrome: health and mana globes clustered on the left,
+/// skill quickbar and potion belt in the middle, menu icons on the right.
 struct HudConsoleLayout {
     static constexpr int kSkillSlotCount = 8;
     static constexpr int kBeltSlotCount = 4;
+    static constexpr int kMenuIconCount = 5;
 
     Rect panel{};
     Rect xpBar{};
@@ -21,10 +22,12 @@ struct HudConsoleLayout {
     Rect healthLabel{};
     Rect manaLabel{};
     Rect levelLabel{};
+    Rect levelBadge{};
     Rect messageStrip{};
     Rect soulsLabel{};
     std::array<Rect, kSkillSlotCount> skillSlots{};
     std::array<Rect, kBeltSlotCount> beltSlots{};
+    std::array<Rect, kMenuIconCount> menuIcons{};
     float slotSize{0.0F};
     float globeRadius{0.0F};
     float labelScale{1.5F};

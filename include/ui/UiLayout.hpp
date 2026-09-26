@@ -4,6 +4,7 @@
 #include "ui/UiScale.hpp"
 #include "ui/UiTextLayout.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -65,6 +66,8 @@ struct CharacterPanelLayout {
     Rect xpBar{};
     Rect hpBar{};
     Rect goldLabel{};
+    Rect spellsPane{};
+    Rect talentsPane{};
     Rect upgradeHeader{};
     Rect upgradeStrengthButton{};
     Rect upgradeDexterityButton{};
@@ -74,6 +77,19 @@ struct CharacterPanelLayout {
     float titleScale{2.2F};
     float bodyScale{1.75F};
     float statLabelScale{1.55F};
+};
+
+struct AbilitySpellLayout {
+    Rect header{};
+    std::array<Rect, 3> icons{};
+    int iconCount{0};
+};
+
+/// Spell parchment contents: basic attacks, strong attacks, specialties.
+struct AbilityBoardLayout {
+    AbilitySpellLayout basic{};
+    AbilitySpellLayout strong{};
+    AbilitySpellLayout specialties{};
 };
 
 struct TradeWindowLayout {
@@ -149,6 +165,10 @@ struct SettingsPanelLayout {
 
 [[nodiscard]] CharacterPanelLayout computeCharacterPanelLayout(const UiScale& scale) noexcept;
 
+[[nodiscard]] AbilityBoardLayout computeAbilityBoardLayout(
+    const CharacterPanelLayout& panel,
+    const UiScale& scale) noexcept;
+
 [[nodiscard]] TradeWindowLayout computeTradeWindowLayout(const UiScale& scale) noexcept;
 
 [[nodiscard]] MinimapWidgetLayout computeMinimapWidgetLayout(
@@ -168,6 +188,24 @@ struct TooltipBoxLayout {
     float lineGap{0.0F};
     float nineSliceBorder{0.0F};
 };
+
+struct ItemCompareCards {
+    TooltipBoxLayout candidate{};
+    TooltipBoxLayout equipped{};
+    bool showEquipped{false};
+};
+
+/// Places the equipped card to the left of the hovered card, both kept on screen.
+[[nodiscard]] ItemCompareCards placeItemCompareCards(
+    const UiScale& scale,
+    float anchorX,
+    float anchorY,
+    const std::vector<std::string>& candidateLines,
+    const std::vector<std::string>& equippedLines,
+    float textScale,
+    const TextWidthMeasureFn& measureWidth,
+    int screenWidth,
+    int screenHeight) noexcept;
 
 [[nodiscard]] TooltipBoxLayout computeTooltipBoxLayout(
     const UiScale& scale,
