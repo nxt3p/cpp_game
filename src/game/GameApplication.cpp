@@ -3774,19 +3774,46 @@ struct GameApplication::Impl {
     }
 
     void uploadTownPlate(const int index, const render::TownPlateKind kind, const bool restored) {
-        const render::TownPixelBuffer image = render::paintTownPlate(kind, restored, kind == render::TownPlateKind::Road ? 320 : 160, kind == render::TownPlateKind::Road ? 72 : 210);
+        const render::TownPixelBuffer image = render::paintTownPlate(
+            kind, restored, kind == render::TownPlateKind::Road ? 320 : 160, kind == render::TownPlateKind::Road ? 72 : 210);
         const std::vector<std::uint8_t> upright = flipTownImage(image);
         static_cast<void>(townPlates_[static_cast<std::size_t>(index)].uploadRgba(
-            image.width, image.height, upright.data(), false));
+            image.width, image.height, upright.data(), true));
+    }
+
+    [[nodiscard]] bool loadTownTextures() {
+        const std::string dir = joinPath(assetsRoot, "textures/town");
+        if (!townBackdrop_.loadFromFile(dir + "/backdrop.png", true)) {
+            return false;
+        }
+        const char* files[7] = {
+            "forge_ruined.png",
+            "forge_repaired.png",
+            "chapel_ruined.png",
+            "chapel_repaired.png",
+            "tavern_ruined.png",
+            "tavern_repaired.png",
+            "road.png"};
+        for (int index = 0; index < 7; ++index) {
+            if (!townPlates_[static_cast<std::size_t>(index)].loadFromFile(dir + "/" + files[index], true)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     void ensureTownBackdrop() {
         if (townBackdropReady_) {
             return;
         }
+        if (loadTownTextures()) {
+            townBackdropReady_ = true;
+            logInfo("Town art loaded from textures/town.");
+            return;
+        }
         const render::TownPixelBuffer image = render::paintTownBackdrop(480, 270);
         const std::vector<std::uint8_t> upright = flipTownImage(image);
-        townBackdropReady_ = townBackdrop_.uploadRgba(image.width, image.height, upright.data(), false);
+        townBackdropReady_ = townBackdrop_.uploadRgba(image.width, image.height, upright.data(), true);
         uploadTownPlate(0, render::TownPlateKind::Forge, false);
         uploadTownPlate(1, render::TownPlateKind::Forge, true);
         uploadTownPlate(2, render::TownPlateKind::Chapel, false);
@@ -3794,6 +3821,7 @@ struct GameApplication::Impl {
         uploadTownPlate(4, render::TownPlateKind::Tavern, false);
         uploadTownPlate(5, render::TownPlateKind::Tavern, true);
         uploadTownPlate(6, render::TownPlateKind::Road, true);
+        logInfo("Town art files missing; using the painted fallback.");
     }
 
     void spinTavern() {
@@ -3926,25 +3954,21 @@ struct GameApplication::Impl {
         const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
         const auto paintBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building, const int ruinedPlate, const int openPlate) {
             const bool repaired = townHub_.isRepaired(building);
+            const ui::Rect art = ui::townBuildingArtRect(rect);
             if (repaired) {
-                const float glow[4] = {1.0F, 0.72F, 0.28F, 0.28F};
+                const float glow[4] = {1.0F, 0.72F, 0.28F, 0.22F};
                 uiRenderer.drawFilledCircle(
-                    rect.x + rect.width * 0.5F,
-                    rect.y + rect.height * 0.42F,
-                    std::min(rect.width, rect.height) * 0.22F,
-                    glow,
-                    22);
+                    art.x + art.width * 0.5F, art.y + art.height * 0.55F, std::min(art.width, art.height) * 0.18F, glow, 22);
             }
             const render::Texture& plate = townPlates_[static_cast<std::size_t>(repaired ? openPlate : ruinedPlate)];
             if (plate.isValid()) {
-                uiRenderer.drawTexturedRect(plate, rect.x, rect.y, rect.width, rect.height, white);
+                uiRenderer.drawTexturedRect(plate, art.x, art.y, art.width, art.height, white);
             }
-            const float banner[4] = {0.12F, 0.07F, 0.04F, repaired ? 0.88F : 0.72F};
-            const float bannerEdge[4] = {0.86F, 0.62F, 0.28F, repaired ? 1.0F : 0.55F};
-            const float bannerY = rect.y + rect.height * 0.72F;
-            const float bannerH = std::min(54.0F, rect.height * 0.22F);
-            uiRenderer.drawFilledRect(rect.x + 10.0F, bannerY, rect.width - 20.0F, bannerH, banner);
-            uiRenderer.drawOutlineRect(rect.x + 10.0F, bannerY, rect.width - 20.0F, bannerH, bannerEdge, repaired ? 2.0F : 1.0F);
+            const ui::Rect caption = ui::townBuildingCaptionRect(rect);
+            const float banner[4] = {0.08F, 0.05F, 0.04F, repaired ? 0.82F : 0.7F};
+            const float bannerEdge[4] = {0.78F, 0.58F, 0.28F, repaired ? 0.95F : 0.45F};
+            uiRenderer.drawFilledRect(caption.x, caption.y, caption.width, caption.height, banner);
+            uiRenderer.drawOutlineRect(caption.x, caption.y, caption.width, caption.height, bannerEdge, 1.5F);
         };
 
         paintBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith, 0, 1);
@@ -3990,12 +4014,15 @@ struct GameApplication::Impl {
         const auto labelBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building) {
             const systems::TownBuildingDefinition definition = systems::townBuildingDefinition(building);
             const bool repaired = townHub_.isRepaired(building);
-            const ui::Rect nameRect{rect.x + 12.0F, rect.y + rect.height * 0.72F, rect.width - 24.0F, 26.0F};
-            const ui::Rect subRect{rect.x + 12.0F, nameRect.y + 24.0F, rect.width - 24.0F, 28.0F};
-            textRenderer.drawTextCentered(nameRect, repaired ? definition.name : definition.ruinedName, 1.7F, title);
-            std::string detail = repaired ? definition.serviceHint : 
-                ("Repair  " + std::to_string(definition.repairGold) + "g  Lv " + std::to_string(definition.requiredLevel));
-            textRenderer.drawTextCentered(subRect, detail.c_str(), 1.25F, sub);
+            const ui::Rect caption = ui::townBuildingCaptionRect(rect);
+            const ui::Rect nameRect{caption.x + 6.0F, caption.y + 2.0F, caption.width - 12.0F, caption.height * 0.48F};
+            const ui::Rect subRect{
+                caption.x + 6.0F, nameRect.y + nameRect.height, caption.width - 12.0F, caption.height * 0.46F};
+            textRenderer.drawTextCentered(nameRect, repaired ? definition.name : definition.ruinedName, 1.35F, title);
+            std::string detail = repaired ? definition.serviceHint
+                                          : ("Repair " + std::to_string(definition.repairGold) + "g  Lv " +
+                                             std::to_string(definition.requiredLevel));
+            textRenderer.drawTextCentered(subRect, detail.c_str(), 1.05F, sub);
         };
         labelBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith);
         labelBuilding(layout.healer, systems::TownBuilding::Healer);
@@ -6416,6 +6443,9 @@ struct GameApplication::Impl {
     }
 
     void renderMinimap() {
+        if (!gameplay::minimapVisible(!zoneManager.showsMinimap(), laneActive_)) {
+            return;
+        }
         const ui::MinimapWidgetLayout widget = minimapWidgetLayout();
         const ui::Rect& frame = widget.frame;
         const ui::Rect& content = widget.content;

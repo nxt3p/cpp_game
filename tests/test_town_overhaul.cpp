@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "gameplay/ZoneManager.hpp"
 #include "render/TownBackdrop.hpp"
 #include "systems/LootEngine.hpp"
 #include "systems/SlotMachineLoot.hpp"
@@ -10,6 +11,7 @@
 #include "ui/UiScale.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <tuple>
@@ -223,6 +225,52 @@ TEST_CASE("Town hotspots and inventory slots do not overlap", "[town][ui]") {
         for (int other = index + 1; other < bagCount; ++other) {
             CHECK(slotsSeparated(bagSlot, desktopBag.inventorySlotRect(other)));
         }
+    }
+}
+
+TEST_CASE("Town hides the circular minimap until the hero is on the road", "[town][ui]") {
+    gameplay::ZoneManager zones;
+    CHECK(zones.activeZone() == gameplay::WorldZone::TOWN);
+    CHECK_FALSE(zones.showsMinimap());
+    CHECK_FALSE(gameplay::minimapVisible(true, false));
+    CHECK(gameplay::minimapVisible(true, true));
+    CHECK(gameplay::minimapVisible(false, false));
+
+    const gameplay::ZoneTransitionResult transition = zones.updatePlayerPosition(gameplay::Vec3{0.0F, 0.0F, 40.0F});
+    CHECK(transition.transitioned);
+    CHECK(zones.activeZone() == gameplay::WorldZone::PLAINS);
+    CHECK(zones.showsMinimap());
+    CHECK(gameplay::minimapVisible(!zones.showsMinimap(), false));
+}
+
+TEST_CASE("Town scene loads committed plates instead of a missing folder", "[town]") {
+    const std::filesystem::path root{ENGINE_ASSETS_DIR};
+    const char* files[] = {
+        "backdrop.png",
+        "forge_ruined.png",
+        "forge_repaired.png",
+        "chapel_ruined.png",
+        "chapel_repaired.png",
+        "tavern_ruined.png",
+        "tavern_repaired.png",
+        "road.png"};
+    for (const char* file : files) {
+        const std::filesystem::path path = root / "textures" / "town" / file;
+        INFO(path.string());
+        REQUIRE(std::filesystem::exists(path));
+        CHECK(std::filesystem::file_size(path) > 500);
+    }
+}
+
+TEST_CASE("Town captions sit under the building art", "[town][ui]") {
+    const ui::UiScale desktop(1280, 720, ui::UiPlatformKind::Desktop);
+    const ui::TownSceneLayout town = ui::computeTownSceneLayout(desktop);
+    for (const ui::Rect& hotspot : {town.blacksmith, town.healer, town.tavern}) {
+        const ui::Rect art = ui::townBuildingArtRect(hotspot);
+        const ui::Rect caption = ui::townBuildingCaptionRect(hotspot);
+        CHECK_FALSE(ui::rectsOverlap(art, caption));
+        CHECK(hotspot.contains(caption.x + caption.width * 0.5F, caption.y + caption.height * 0.5F));
+        CHECK(art.height > caption.height);
     }
 }
 

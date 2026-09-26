@@ -1,4 +1,4 @@
-# GPU atlas generation for scripts/generate_rpg_atlases_sd.py.
+# GPU atlas generation for scripts/generate_rpg_atlases_sd.py and scripts/generate_town_sd.py.
 # Install into a venv on the machine that has CUDA (RTX 5080).
 # CPU wheels work for --dry-run / --check only.
 torch>=2.4

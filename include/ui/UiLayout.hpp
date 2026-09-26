@@ -149,6 +149,10 @@ struct TownSceneLayout {
 
 [[nodiscard]] Rect townBuildingRect(const TownSceneLayout& layout, int buildingIndex) noexcept;
 
+/// Building painting sits above a short caption so the label does not slice the sprite.
+[[nodiscard]] Rect townBuildingArtRect(const Rect& hotspot) noexcept;
+[[nodiscard]] Rect townBuildingCaptionRect(const Rect& hotspot) noexcept;
+
 enum class SettingsRowKind : std::uint8_t { Cycle, Slider };
 
 struct SettingsRowLayout {

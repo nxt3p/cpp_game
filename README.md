@@ -148,7 +148,25 @@ Buildings start in ruins. Click one to spend gold once your level is high enough
 | Chapel | 2 | 64 | Rest (12 gold tithe restores health and mana) |
 | Tavern | 3 | 120 | Mystery gamble, 25 gold a spin |
 
-Kills pay gold and experience directly, so the first repairs come from fighting rather than from a pile of items. **The Road** (or **M**) opens the campaign map. Mythical items are reserved for the tavern reel at 1/10000.
+Kills pay gold and experience directly, so the first repairs come from fighting rather than from a pile of items. **The Road** (or **M**) opens the campaign map. The circular minimap stays hidden on this scene and returns on the road and in combat. Mythical items are reserved for the tavern reel at 1/10000.
+
+Town pictures live in `assets/textures/town/` (`backdrop.png`, ruined and repaired forge/chapel/tavern plates, `road.png`). The game loads those files. On the RTX 5080, regenerate them with the same SDXL LoRAs as the item atlases:
+
+```bash
+cd /home/dev/projects/cppGame
+python3 -m venv .venv-diffusion && source .venv-diffusion/bin/activate
+python -m pip install -U pip
+python -m pip install -r scripts/requirements-diffusion.txt
+python scripts/generate_town_sd.py --backend sdxl
+```
+
+Flux, after accepting the license and `huggingface-cli login`:
+
+```bash
+python scripts/generate_town_sd.py --backend flux --cpu-offload
+```
+
+`python scripts/generate_town_sd.py --dry-run` prints prompts without a GPU. `--placeholders` rewrites the committed pixel-art stand-ins (Pillow only) if the PNGs are missing.
 
 ### Pause menu
 

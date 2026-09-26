@@ -795,6 +795,18 @@ TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept {
     return layout;
 }
 
+Rect townBuildingArtRect(const Rect& hotspot) noexcept {
+    const float captionH = std::min(48.0F, std::max(28.0F, hotspot.height * 0.16F));
+    return {hotspot.x, hotspot.y, hotspot.width, std::max(1.0F, hotspot.height - captionH - 8.0F)};
+}
+
+Rect townBuildingCaptionRect(const Rect& hotspot) noexcept {
+    const Rect art = townBuildingArtRect(hotspot);
+    const float width = std::min(std::max(48.0F, hotspot.width - 28.0F), 320.0F);
+    const float height = std::max(24.0F, hotspot.y + hotspot.height - (art.y + art.height) - 6.0F);
+    return {hotspot.x + (hotspot.width - width) * 0.5F, art.y + art.height + 4.0F, width, height};
+}
+
 Rect townBuildingRect(const TownSceneLayout& layout, const int buildingIndex) noexcept {
     switch (buildingIndex) {
     case 0:

@@ -8,6 +8,9 @@
 
 namespace gameplay {
 
+/// Lane combat keeps the radar even if the zone flag is still town. The static town scene hides it.
+[[nodiscard]] bool minimapVisible(bool inTown, bool laneCombat) noexcept;
+
 struct ZoneTransitionResult {
     bool transitioned{false};
     WorldZone fromZone{WorldZone::TOWN};
@@ -38,6 +41,9 @@ public:
     [[nodiscard]] bool isInsideBlacksmithRadius(const Vec3& position) const noexcept;
     /// Town is a static scene. Free walking is only available on the plains and roads.
     [[nodiscard]] bool allowsFreeMovement() const noexcept;
+
+    /// The circular radar is for roads and combat. The static town scene does not show it.
+    [[nodiscard]] bool showsMinimap() const noexcept;
 
     void respawnPlainsContent();
     void respawnPlainsContent(std::uint32_t seed, int depth);
