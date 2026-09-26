@@ -36,6 +36,7 @@
 #include "systems/SlotMachineLoot.hpp"
 #include "systems/Blacksmith.hpp"
 #include "systems/TradeSystem.hpp"
+#include "ui/LootPresentation.hpp"
 #include "ui/MinimapSystem.hpp"
 #include "ui/OverlayState.hpp"
 #include "ui/HudConsoleLayout.hpp"
@@ -390,8 +391,29 @@ struct GameApplication::Impl {
         float scale{1.85F};
     };
 
+    struct CachedItemCard {
+        ui::TooltipBoxLayout layout{};
+        std::vector<systems::TooltipLine> lines;
+        float scale{1.7F};
+        systems::ItemRarity rarity{systems::ItemRarity::Common};
+    };
+
     std::optional<CachedTooltip> cachedItemTooltip_;
+    std::optional<CachedItemCard> cachedItemCard_;
+    std::optional<CachedItemCard> cachedCompareCard_;
     std::optional<CachedTooltip> cachedInteractableTooltip_;
+    ui::LootPresentation lootPresentation_{};
+    int hoveredHudMenu_{-1};
+
+    struct PendingLootLabel {
+        std::string name;
+        float red{0.8F};
+        float green{0.8F};
+        float blue{0.8F};
+        int rank{0};
+        float intensity{0.55F};
+    };
+    std::vector<PendingLootLabel> pendingLootLabels_{};
 
     CombatSystem combatSystem;
     CombatFeedback combatFeedback_{};
@@ -748,7 +770,7 @@ struct GameApplication::Impl {
         } else if (screen == AppScreen::SETTINGS) {
             logHelp("Settings placeholder. Click Back to return.");
         } else if (screen == AppScreen::IN_GAME) {
-            hudMessage = "Town | M campaign map | I gear | C souls | Q potion | Esc";
+            hudMessage = "Town | M campaign map | I gear | C abilities | Q potion | Esc";
             logHelp(hudMessage);
         }
     }
@@ -796,6 +818,8 @@ struct GameApplication::Impl {
         combatSystem.reset();
         attackCooldownSeconds_ = 0.0F;
         floatingCombatTexts.clear();
+        lootPresentation_.clear();
+        pendingLootLabels_.clear();
         playerCurrentHealth_ = effectiveCharacterStats().maxHealth;
         invalidateSceneryCaches();
         setScreen(AppScreen::IN_GAME);
@@ -973,6 +997,8 @@ struct GameApplication::Impl {
         hasMoveTarget = false;
         attackCooldownSeconds_ = 0.0F;
         floatingCombatTexts.clear();
+        lootPresentation_.clear();
+        pendingLootLabels_.clear();
         hoveredInventorySlot_.reset();
         hoveredEquipmentSlot_.reset();
         cachedItemTooltip_.reset();
@@ -1697,6 +1723,8 @@ struct GameApplication::Impl {
         attackCooldownSeconds_ = 0.0F;
         mobAttackCooldowns_.clear();
         floatingCombatTexts.clear();
+        lootPresentation_.clear();
+        pendingLootLabels_.clear();
         particles_.clear();
         combatFeedback_.reset();
         combatFeedback_.addFlash(glm::vec3(0.6F, 0.02F, 0.04F), 0.75F, 1.2F);
@@ -2636,13 +2664,16 @@ struct GameApplication::Impl {
         }
     }
 
-    void drawTooltipBackground(const ui::TooltipBoxLayout& layout) const {
+    void drawTooltipBackground(const ui::TooltipBoxLayout& layout, const float* borderColor = nullptr) const {
         const ui::Rect& box = layout.box;
-        const float parchment[4] = {0.16F, 0.12F, 0.08F, 0.96F};
+        const float parchment[4] = {0.05F, 0.04F, 0.035F, 0.96F};
         const float gold[4] = {0.72F, 0.56F, 0.24F, 1.0F};
-        const float ink[4] = {0.28F, 0.2F, 0.1F, 0.9F};
+        const float* border = borderColor != nullptr ? borderColor : gold;
+        const float ink[4] = {border[0] * 0.45F, border[1] * 0.45F, border[2] * 0.45F, 0.9F};
         uiRenderer.drawFilledRect(box.x, box.y, box.width, box.height, parchment);
-        uiRenderer.drawOutlineRect(box.x, box.y, box.width, box.height, gold, 2.0F);
+        uiRenderer.drawOutlineRect(box.x, box.y, box.width, box.height, border, 2.0F);
+        const float accent = std::max(3.0F, currentUiScale().dim(4.0F));
+        uiRenderer.drawFilledRect(box.x, box.y, box.width, accent, border);
         const float inset = currentUiScale().dim(4.0F);
         if (box.width > inset * 3.0F && box.height > inset * 3.0F) {
             uiRenderer.drawOutlineRect(
@@ -2706,9 +2737,15 @@ struct GameApplication::Impl {
         hoveredTradePlayerSlot_.reset();
         hoveredTradeVendorSlot_.reset();
         hoveredBlacksmithService_.reset();
+        hoveredHudMenu_ = -1;
 
         const ui::HitRegion* region = uiInteraction_.hitTest(mouseX, mouseY);
         if (region == nullptr) {
+            return;
+        }
+
+        if (region->kind == ui::WidgetKind::HudMenuButton) {
+            hoveredHudMenu_ = region->slotIndex;
             return;
         }
 
@@ -2921,14 +2958,18 @@ struct GameApplication::Impl {
     }
 
     [[nodiscard]] bool slotLetterOverlapsTooltip(const ui::Rect& slot) const {
-        if (!cachedItemTooltip_.has_value()) {
-            return false;
-        }
-
-        const ui::Rect& box = cachedItemTooltip_->layout.box;
         const float centerX = slot.x + slot.width * 0.5F;
         const float centerY = slot.y + slot.height * 0.5F;
-        return box.contains(centerX, centerY);
+        const auto hits = [&](const ui::Rect& box) {
+            return box.width > 0.0F && box.contains(centerX, centerY);
+        };
+        if (cachedItemTooltip_.has_value() && hits(cachedItemTooltip_->layout.box)) {
+            return true;
+        }
+        if (cachedItemCard_.has_value() && hits(cachedItemCard_->layout.box)) {
+            return true;
+        }
+        return cachedCompareCard_.has_value() && hits(cachedCompareCard_->layout.box);
     }
 
     void drawEquipmentSlot(
@@ -3630,33 +3671,63 @@ struct GameApplication::Impl {
             tint);
     }
 
-    [[nodiscard]] static glm::vec4 lootPillarColor(const systems::LootPrize& prize) noexcept {
-        switch (prize.kind) {
-        case systems::LootPrizeKind::Unique:
-            return glm::vec4(0.85F, 0.45F, 1.0F, 1.0F);
-        case systems::LootPrizeKind::Legendary:
-            return glm::vec4(1.0F, 0.72F, 0.2F, 1.0F);
-        case systems::LootPrizeKind::SocketedGear:
-            return glm::vec4(0.45F, 0.7F, 1.0F, 1.0F);
-        case systems::LootPrizeKind::Material:
-            return glm::vec4(0.4F, 0.95F, 0.6F, 1.0F);
-        case systems::LootPrizeKind::Gold:
-            return glm::vec4(1.0F, 0.9F, 0.4F, 1.0F);
-        case systems::LootPrizeKind::Consumable:
-            return glm::vec4(0.95F, 0.35F, 0.4F, 1.0F);
-        case systems::LootPrizeKind::Junk:
+    [[nodiscard]] static float lootIntensityForRank(const int rank) noexcept {
+        switch (rank) {
+        case 3:
+            return 2.2F;
+        case 2:
+            return 1.75F;
+        case 1:
+            return 1.0F;
         default:
-            return glm::vec4(0.6F, 0.6F, 0.6F, 1.0F);
+            return 0.55F;
         }
     }
 
+    void noteLootLabel(const std::string& name, const systems::ItemRarity rarity) {
+        const systems::RarityColor tint = systems::rarityColor(rarity);
+        PendingLootLabel label{};
+        label.name = name;
+        label.red = tint.red;
+        label.green = tint.green;
+        label.blue = tint.blue;
+        label.rank = systems::rarityRank(rarity);
+        label.intensity = lootIntensityForRank(label.rank);
+        pendingLootLabels_.push_back(std::move(label));
+    }
+
+    void flushLootBeacon(const glm::vec3& worldPosition) {
+        if (pendingLootLabels_.empty()) {
+            return;
+        }
+
+        float intensity = 0.45F;
+        std::vector<ui::LootLabel> labels;
+        labels.reserve(pendingLootLabels_.size());
+        for (const PendingLootLabel& pending : pendingLootLabels_) {
+            intensity = std::max(intensity, pending.intensity);
+            labels.push_back(ui::LootLabel{pending.name, pending.red, pending.green, pending.blue, pending.rank});
+        }
+        const int pile = static_cast<int>(lootPresentation_.beacons().size());
+        const float angle = static_cast<float>(pile) * 0.9F;
+        const float radius = 1.15F + static_cast<float>(pile % 5) * 0.55F;
+        const glm::vec3 piled =
+            worldPosition + glm::vec3(std::cos(angle) * radius, 0.0F, std::sin(angle) * radius);
+        lootPresentation_.spawn(piled.x, piled.y, piled.z, std::move(labels), intensity);
+        if (intensity >= 1.6F && !lootPresentation_.beacons().empty()) {
+            const ui::LootLabel& brightest = lootPresentation_.beacons().back().labels.front();
+            particles_.spawnSpellFlash(
+                piled, glm::vec4(brightest.red, brightest.green, brightest.blue, 1.0F));
+        }
+        pendingLootLabels_.clear();
+    }
+
     void awardLootPrize(const systems::LootPrize& prize, const glm::vec3& worldPosition, std::ostringstream& summary) {
-        const glm::vec4 color = lootPillarColor(prize);
         if (prize.kind == systems::LootPrizeKind::Gold) {
             zoneManager.player().addGold(prize.goldAmount);
             tradeSystem.setPlayerGold(zoneManager.player().gold());
             spawnFloatingCombatText(
-                worldPosition, "+" + std::to_string(prize.goldAmount) + " gold", color.r, color.g, color.b, 1.8F, 2.2F);
+                worldPosition, "+" + std::to_string(prize.goldAmount) + " gold", 1.0F, 0.86F, 0.28F, 1.8F, 2.2F);
             summary << "+" << prize.goldAmount << "g ";
             return;
         }
@@ -3664,19 +3735,18 @@ struct GameApplication::Impl {
             return;
         }
 
+        const systems::RarityColor tint = systems::rarityColor(prize.item->rarity);
         const systems::InventoryAddResult added = playerInventory.addItem(*prize.item);
         if (!added.success) {
             summary << "[bag full: " << prize.item->name << " lost] ";
             logInfo("Inventory full — " + prize.item->name + " lost!");
+            noteLootLabel(prize.item->name + " (full)", prize.item->rarity);
             return;
         }
 
-        spawnFloatingCombatText(worldPosition, prize.item->name, color.r, color.g, color.b, 2.4F, 2.6F);
-        const float pillarIntensity =
-            prize.tier == systems::LootReelTier::Jackpot ? 2.4F : (prize.tier == systems::LootReelTier::Medium ? 1.2F : 0.0F);
-        if (pillarIntensity > 0.0F) {
-            particles_.spawnLootPillar(worldPosition, color, pillarIntensity);
-        }
+        noteLootLabel(prize.item->name, prize.item->rarity);
+        const float pillarIntensity = lootIntensityForRank(systems::rarityRank(prize.item->rarity));
+        particles_.spawnLootPillar(worldPosition, glm::vec4(tint.red, tint.green, tint.blue, 1.0F), pillarIntensity);
         summary << prize.item->name << " ";
     }
 
@@ -3705,6 +3775,7 @@ struct GameApplication::Impl {
         for (const systems::LootPrize& prize : spin.prizes) {
             awardLootPrize(prize, worldPosition, summary);
         }
+        flushLootBeacon(worldPosition);
 
         hudMessage = summary.str();
         std::ostringstream logLine;
@@ -4216,6 +4287,62 @@ struct GameApplication::Impl {
         tradeSystem.setPlayerGold(zoneManager.player().gold());
     }
 
+    void activateHudMenu(const int index) {
+        if (index <= 2 && stateManager.currentState() == gameplay::GameState::TRADING) {
+            hudMessage = "Close the blacksmith first.";
+            return;
+        }
+
+        switch (index) {
+        case 0:
+            if (stateManager.currentState() == gameplay::GameState::CHARACTER_MENU) {
+                stateManager.closeCharacterMenu();
+                overlayState.showCharacterScreen(false);
+            } else {
+                overlayState.showInventoryOverlay(false);
+                nodeMapOpen_ = false;
+                stateManager.openCharacterMenu();
+                overlayState.showCharacterScreen(true);
+            }
+            break;
+        case 1:
+            nodeMapOpen_ = false;
+            if (overlayState.inventoryOverlay().visible) {
+                overlayState.showInventoryOverlay(false);
+            } else {
+                if (stateManager.currentState() == gameplay::GameState::CHARACTER_MENU) {
+                    stateManager.closeCharacterMenu();
+                    overlayState.showCharacterScreen(false);
+                }
+                overlayState.showInventoryOverlay(true);
+            }
+            break;
+        case 2:
+            if (zoneManager.activeZone() != gameplay::WorldZone::TOWN) {
+                hudMessage = "The campaign map is in town.";
+                break;
+            }
+            overlayState.showInventoryOverlay(false);
+            overlayState.showCharacterScreen(false);
+            if (stateManager.currentState() == gameplay::GameState::CHARACTER_MENU) {
+                stateManager.closeCharacterMenu();
+            }
+            nodeMapOpen_ = !nodeMapOpen_;
+            hudMessage = nodeMapOpen_ ? "Choose a road. Earlier roads stay open." : "Campaign map closed.";
+            break;
+        case 3:
+            gamePaused = true;
+            pauseSettingsOpen = true;
+            break;
+        case 4:
+            gamePaused = true;
+            pauseSettingsOpen = false;
+            break;
+        default:
+            break;
+        }
+    }
+
     void closeTransientOverlays() {
         if (stateManager.currentState() == gameplay::GameState::CHARACTER_MENU) {
             stateManager.closeCharacterMenu();
@@ -4340,10 +4467,13 @@ struct GameApplication::Impl {
         }
 
         if (pressed && isMouseOverInGameUi(mouseX, mouseY)) {
-            if (stateManager.currentState() == gameplay::GameState::TRADING) {
+            const ui::HitRegion* menuRegion = uiInteraction_.hitTest(mouseX, mouseY);
+            if (menuRegion != nullptr && menuRegion->kind == ui::WidgetKind::HudMenuButton) {
+                activateHudMenu(menuRegion->slotIndex);
+            } else if (stateManager.currentState() == gameplay::GameState::TRADING) {
                 handleEquipmentUiClick(mouseX, mouseY);
             } else {
-                const ui::HitRegion* region = uiInteraction_.hitTest(mouseX, mouseY);
+                const ui::HitRegion* region = menuRegion;
                 if (region != nullptr && region->kind == ui::WidgetKind::StatUpgradeButton) {
                     handleEquipmentUiClick(mouseX, mouseY);
                 } else if (region != nullptr && region->kind == ui::WidgetKind::InventorySlot &&
@@ -5192,12 +5322,12 @@ struct GameApplication::Impl {
         WorldLightSettings light{};
         light.playerPos = playerPosition;
         light.radius = effective.lightRadius;
-        light.ambientDark = onPlains ? 0.04F : 0.08F;
-        light.ambientBright = onPlains ? 0.42F : 0.48F;
+        light.ambientDark = onPlains ? 0.012F : 0.028F;
+        light.ambientBright = onPlains ? 0.78F : 0.64F;
         if (laneActive_) {
-            light.ambientDark = 0.32F;
-            light.ambientBright = 0.78F;
-            light.radius = std::max(effective.lightRadius, 42.0F);
+            light.ambientDark = 0.045F;
+            light.ambientBright = 0.62F;
+            light.radius = std::max(effective.lightRadius, 22.0F);
         }
         return light;
     }
@@ -5441,7 +5571,7 @@ struct GameApplication::Impl {
         const gameplay::CameraMatrices cameraMatrices = camera.matricesForTarget(cameraFocus());
 
         glEnable(GL_DEPTH_TEST);
-        glClearColor(0.015F, 0.018F, 0.03F, 1.0F);
+        glClearColor(0.004F, 0.006F, 0.014F, 1.0F);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         applyPlayerLightUniforms();
@@ -6005,49 +6135,15 @@ struct GameApplication::Impl {
         const systems::ItemRarity rarity,
         float fill[4],
         float border[4]) noexcept {
-        switch (rarity) {
-        case systems::ItemRarity::Rare:
-            fill[0] = 0.22F;
-            fill[1] = 0.32F;
-            fill[2] = 0.62F;
-            fill[3] = 1.0F;
-            border[0] = 0.45F;
-            border[1] = 0.65F;
-            border[2] = 1.0F;
-            border[3] = 1.0F;
-            break;
-        case systems::ItemRarity::Legendary:
-            fill[0] = 0.55F;
-            fill[1] = 0.38F;
-            fill[2] = 0.08F;
-            fill[3] = 1.0F;
-            border[0] = 1.0F;
-            border[1] = 0.78F;
-            border[2] = 0.22F;
-            border[3] = 1.0F;
-            break;
-        case systems::ItemRarity::Unique:
-            fill[0] = 0.42F;
-            fill[1] = 0.16F;
-            fill[2] = 0.55F;
-            fill[3] = 1.0F;
-            border[0] = 0.86F;
-            border[1] = 0.45F;
-            border[2] = 1.0F;
-            border[3] = 1.0F;
-            break;
-        case systems::ItemRarity::Common:
-        default:
-            fill[0] = 0.62F;
-            fill[1] = 0.62F;
-            fill[2] = 0.64F;
-            fill[3] = 1.0F;
-            border[0] = 0.9F;
-            border[1] = 0.9F;
-            border[2] = 0.92F;
-            border[3] = 1.0F;
-            break;
-        }
+        const systems::RarityColor tint = systems::rarityColor(rarity);
+        fill[0] = tint.red * 0.32F;
+        fill[1] = tint.green * 0.32F;
+        fill[2] = tint.blue * 0.32F;
+        fill[3] = 1.0F;
+        border[0] = tint.red;
+        border[1] = tint.green;
+        border[2] = tint.blue;
+        border[3] = 1.0F;
     }
 
     void renderInventoryOverlay() {
@@ -6075,6 +6171,13 @@ struct GameApplication::Impl {
         }
         const float plaqueGold[4] = {0.72F, 0.56F, 0.22F, 0.95F};
         uiRenderer.drawOutlineRect(panel.x, panel.y, panel.width, panel.height, plaqueGold, 2.0F);
+        const float titleFill[4] = {0.42F, 0.08F, 0.09F, 0.92F};
+        uiRenderer.drawFilledRect(
+            panel.x + currentUiScale().dim(8.0F),
+            panel.y + currentUiScale().dim(6.0F),
+            std::max(currentUiScale().dim(40.0F), panel.width - layout.statsSidebarWidth - currentUiScale().dim(24.0F)),
+            std::max(currentUiScale().dim(16.0F), layout.titleBandHeight - currentUiScale().dim(8.0F)),
+            titleFill);
 
         const float sidebarFill[4] = {0.08F, 0.06F, 0.045F, 0.72F};
         uiRenderer.drawFilledRect(
@@ -6184,7 +6287,7 @@ struct GameApplication::Impl {
         const float hintColor[4] = {0.55F, 0.58F, 0.64F, 0.85F};
 
         std::ostringstream title;
-        title << characterClassName(selectedClass) << "  |  Lv " << base.level;
+        title << "CHARACTER   " << characterClassName(selectedClass) << "  Lv " << base.level;
         const ui::Rect titleBounds{
             layout.panel.x + layoutScale.dim(12.0F),
             layout.panel.y + layoutScale.dim(6.0F),
@@ -6199,7 +6302,7 @@ struct GameApplication::Impl {
             layoutScale.dim(16.0F)};
         drawBoundedText(
             hintBounds,
-            "Click gear to unequip | Click bag items to equip | C level up | Esc close",
+            "Click gear to unequip | Click bag items to equip | C abilities | Esc close",
             layoutScale.dim(1.05F),
             hintColor);
 
@@ -6214,7 +6317,7 @@ struct GameApplication::Impl {
 
         const float goldColor[4] = {0.95F, 0.82F, 0.28F, 1.0F};
         std::ostringstream goldLine;
-        goldLine << "Gold " << tradeSystem.playerGold();
+        goldLine << ui::formatGroupedNumber(tradeSystem.playerGold());
         drawBoundedText(layout.goldLabel, goldLine.str(), layoutScale.dim(1.35F), goldColor);
 
         const std::vector<std::string> statLines = buildCharacterStatLines(true);
@@ -6236,10 +6339,20 @@ struct GameApplication::Impl {
             statY += statLineHeight;
         }
 
+        const ui::Rect bagGold{
+            layout.bagHeader.x,
+            layout.bagHeader.y,
+            layout.bagHeader.width * 0.62F,
+            layout.bagHeader.height};
+        const ui::Rect bagCount{
+            layout.bagHeader.x + layout.bagHeader.width * 0.62F,
+            layout.bagHeader.y,
+            layout.bagHeader.width * 0.38F,
+            layout.bagHeader.height};
+        drawBoundedText(bagGold, ui::formatGroupedNumber(tradeSystem.playerGold()), layoutScale.dim(1.35F), goldColor);
         std::ostringstream bagTitle;
-        bagTitle << "Backpack " << playerInventory.usedSlots() << "/"
-                 << playerInventory.capacity();
-        drawBoundedText(layout.bagHeader, bagTitle.str(), layoutScale.dim(1.35F), subtitleColor);
+        bagTitle << playerInventory.usedSlots() << "/" << playerInventory.capacity();
+        drawBoundedText(bagCount, bagTitle.str(), layoutScale.dim(1.35F), subtitleColor);
 
         for (int equipmentIndex = 0;
              equipmentIndex < static_cast<int>(systems::EquipmentSlotKind::Count);
@@ -6276,8 +6389,94 @@ struct GameApplication::Impl {
         }
     }
 
+    void tooltipToneColor(
+        const systems::TooltipTone tone,
+        const systems::ItemRarity rarity,
+        const std::string& text,
+        float color[4]) const {
+        const systems::RarityColor tint = systems::rarityColor(rarity);
+        color[3] = 1.0F;
+        switch (tone) {
+        case systems::TooltipTone::Title:
+            color[0] = tint.red;
+            color[1] = tint.green;
+            color[2] = tint.blue;
+            break;
+        case systems::TooltipTone::Headline:
+            color[0] = 0.96F;
+            color[1] = 0.94F;
+            color[2] = 0.86F;
+            break;
+        case systems::TooltipTone::Attribute:
+            color[0] = 0.45F;
+            color[1] = 0.66F;
+            color[2] = 1.0F;
+            break;
+        case systems::TooltipTone::Effect:
+            color[0] = 1.0F;
+            color[1] = 0.62F;
+            color[2] = 0.22F;
+            break;
+        case systems::TooltipTone::Footer:
+            color[0] = 0.92F;
+            color[1] = 0.78F;
+            color[2] = 0.32F;
+            break;
+        case systems::TooltipTone::Compare:
+            if (!text.empty() && text.front() == '-') {
+                color[0] = 0.95F;
+                color[1] = 0.35F;
+                color[2] = 0.32F;
+            } else {
+                color[0] = 0.4F;
+                color[1] = 0.9F;
+                color[2] = 0.48F;
+            }
+            break;
+        case systems::TooltipTone::Meta:
+        default:
+            color[0] = 0.78F;
+            color[1] = 0.74F;
+            color[2] = 0.64F;
+            break;
+        }
+    }
+
+    void drawItemCardBackground(const CachedItemCard& card) const {
+        const systems::RarityColor tint = systems::rarityColor(card.rarity);
+        const float border[4] = {tint.red, tint.green, tint.blue, 1.0F};
+        drawTooltipBackground(card.layout, border);
+    }
+
+    void drawItemCardText(const CachedItemCard& card) const {
+        const float lineWidth = card.layout.box.width - card.layout.contentInsetX * 2.0F;
+        float cursorY = card.layout.box.y + card.layout.contentInsetY;
+        for (const systems::TooltipLine& line : card.lines) {
+            float color[4]{};
+            tooltipToneColor(line.tone, card.rarity, line.text, color);
+            const ui::Rect row{
+                card.layout.box.x + card.layout.contentInsetX,
+                cursorY,
+                lineWidth,
+                card.layout.lineHeight};
+            drawBoundedText(row, line.text, card.scale, color);
+            cursorY += card.layout.lineHeight + card.layout.lineGap;
+        }
+    }
+
+    [[nodiscard]] static std::vector<std::string> tooltipTexts(const systems::ItemTooltipCard& card) {
+        std::vector<std::string> lines;
+        lines.reserve(card.lines.size());
+        for (const systems::TooltipLine& line : card.lines) {
+            lines.push_back(line.text);
+        }
+        return lines;
+    }
+
     void renderItemTooltipBackground() {
         cachedItemTooltip_.reset();
+        cachedItemCard_.reset();
+        cachedCompareCard_.reset();
 
         std::optional<systems::ItemMetadata> hoveredItem;
         float anchorX = 0.0F;
@@ -6339,90 +6538,97 @@ struct GameApplication::Impl {
             return;
         }
 
-        std::string tooltip = systems::formatItemTooltip(*hoveredItem);
+        const bool equippedSlot = hoveredEquipmentSlot_.has_value();
+        systems::ItemTooltipCard candidate =
+            systems::buildItemTooltipCard(*hoveredItem, equippedSlot ? "Equipped" : nullptr);
+        systems::ItemTooltipCard equippedCard{};
+        bool showEquipped = false;
 
-        // Stat comparison against whatever currently occupies the slot this item would go into.
-        const bool hoveringBagItem = !hoveredEquipmentSlot_.has_value() &&
-                                     systems::Equipment::isEquippableCategory(hoveredItem->category);
-        if (hoveringBagItem) {
+        if (!equippedSlot && systems::Equipment::isEquippableCategory(hoveredItem->category)) {
             const systems::EquipmentSlotKind targetSlot =
                 systems::Equipment::resolveEquipSlot(hoveredItem->category, playerEquipment);
             if (playerEquipment.isSlotOccupied(targetSlot)) {
+                equippedCard = systems::buildItemTooltipCard(*playerEquipment.itemAt(targetSlot), "Equipped");
+                showEquipped = true;
                 const std::vector<std::string> comparison =
                     systems::formatItemComparisonLines(*hoveredItem, *playerEquipment.itemAt(targetSlot));
                 for (const std::string& line : comparison) {
-                    tooltip += '\n' + line;
+                    candidate.lines.push_back(systems::TooltipLine{line, systems::TooltipTone::Compare});
                 }
             } else {
-                tooltip += "\n(empty ";
-                tooltip += systems::Equipment::slotLabel(targetSlot);
-                tooltip += " slot)";
+                candidate.lines.push_back(systems::TooltipLine{
+                    std::string("(empty ") + systems::Equipment::slotLabel(targetSlot) + " slot)",
+                    systems::TooltipTone::Meta});
             }
         }
 
         if (stateManager.currentState() == gameplay::GameState::TRADING) {
             if (hoveredTradePlayerSlot_.has_value()) {
-                tooltip += "\nClick to sell for " +
-                            std::to_string(systems::blacksmithSellPrice(*hoveredItem)) + " gold";
+                candidate.lines.push_back(systems::TooltipLine{
+                    "Click to sell for " + std::to_string(systems::blacksmithSellPrice(*hoveredItem)) + " gold",
+                    systems::TooltipTone::Footer});
             } else if (hoveredTradeVendorSlot_.has_value()) {
-                tooltip += "\nClick to buy for " +
-                            std::to_string(systems::blacksmithBuyPrice(*hoveredItem)) + " gold";
+                candidate.lines.push_back(systems::TooltipLine{
+                    "Click to buy for " + std::to_string(systems::blacksmithBuyPrice(*hoveredItem)) + " gold",
+                    systems::TooltipTone::Footer});
             }
         }
 
-        std::vector<std::string> lines;
-        std::istringstream stream(tooltip);
-        std::string line;
-        while (std::getline(stream, line)) {
-            lines.push_back(line);
+        constexpr float kTooltipScale = 1.7F;
+        const ui::ItemCompareCards placed = ui::placeItemCompareCards(
+            currentUiScale(),
+            anchorX,
+            anchorY,
+            tooltipTexts(candidate),
+            showEquipped ? tooltipTexts(equippedCard) : std::vector<std::string>{},
+            kTooltipScale,
+            textMeasureFn(),
+            window.width(),
+            window.height());
+
+        cachedItemCard_ = CachedItemCard{placed.candidate, std::move(candidate.lines), kTooltipScale, hoveredItem->rarity};
+        drawItemCardBackground(*cachedItemCard_);
+        if (showEquipped) {
+            cachedCompareCard_ =
+                CachedItemCard{placed.equipped, std::move(equippedCard.lines), kTooltipScale, equippedCard.rarity};
+            drawItemCardBackground(*cachedCompareCard_);
         }
 
-        constexpr float kTooltipScale = 1.85F;
-        const ui::TooltipBoxLayout tooltipLayout =
-            computeItemTooltipLayout(anchorX, anchorY, lines, kTooltipScale);
-        drawTooltipBackground(tooltipLayout);
-        const float iconSize = 42.0F;
+        const float iconSize = currentUiScale().dim(36.0F);
         const ui::Rect iconRect{
-            tooltipLayout.box.x - iconSize - 8.0F, tooltipLayout.box.y, iconSize, iconSize};
+            placed.candidate.box.x - iconSize - currentUiScale().dim(8.0F),
+            placed.candidate.box.y,
+            iconSize,
+            iconSize};
         float iconFill[4]{};
         float iconBorder[4]{};
         rarityColors(hoveredItem->rarity, iconFill, iconBorder);
         uiRenderer.drawFilledRect(iconRect.x, iconRect.y, iconRect.width, iconRect.height, iconFill);
         uiRenderer.drawOutlineRect(iconRect.x, iconRect.y, iconRect.width, iconRect.height, iconBorder, 2.0F);
         drawItemIcon(iconRect, *hoveredItem);
-        cachedItemTooltip_ = CachedTooltip{tooltipLayout, std::move(lines), kTooltipScale};
     }
 
     void renderItemTooltipText() const {
-        if (!cachedItemTooltip_.has_value()) {
-            return;
+        if (cachedItemTooltip_.has_value()) {
+            drawTextTooltipTextOnly(
+                cachedItemTooltip_->layout, cachedItemTooltip_->lines, cachedItemTooltip_->scale);
         }
-
-        drawTextTooltipTextOnly(
-            cachedItemTooltip_->layout, cachedItemTooltip_->lines, cachedItemTooltip_->scale);
+        if (cachedCompareCard_.has_value()) {
+            drawItemCardText(*cachedCompareCard_);
+        }
+        if (cachedItemCard_.has_value()) {
+            drawItemCardText(*cachedItemCard_);
+        }
     }
 
-    [[nodiscard]] std::vector<std::string> buildCharacterScreenLines() const {
-        const ui::CharacterScreenData& base = overlayState.characterScreen();
-        const int upgradeCost = systems::soulUpgradeCost(base.statUpgradesPurchased);
-        const bool inTown = zoneManager.activeZone() == gameplay::WorldZone::TOWN;
-        std::vector<std::string> lines;
-
-        std::ostringstream soulsLine;
-        soulsLine << "Souls carried: " << base.carriedSouls;
-        if (!inTown) {
-            soulsLine << " (lost on death)";
-        }
-        lines.push_back(soulsLine.str());
-
-        std::ostringstream gainLine;
-        gainLine << "Kill streak " << systems::formatSoulGainMultiplier(base.soulGainMultiplier)
-                 << " | Next upgrade " << upgradeCost << " souls";
-        lines.push_back(gainLine.str());
-
-        const std::vector<std::string> statLines = buildCharacterStatLines(false);
-        lines.insert(lines.end(), statLines.begin(), statLines.end());
-        return lines;
+    void drawTalentNode(const ui::Rect& button, const float tint[4], const bool hovered) const {
+        const float cx = button.x + button.width * 0.5F;
+        const float cy = button.y + button.height * 0.5F;
+        const float radius = std::min(button.width, button.height) * 0.42F;
+        const float rim[4] = {0.86F, 0.68F, 0.28F, hovered ? 1.0F : 0.85F};
+        const float core[4] = {tint[0], tint[1], tint[2], hovered ? 1.0F : 0.9F};
+        uiRenderer.drawFilledCircle(cx, cy, radius + currentUiScale().dim(3.0F), rim, 22);
+        uiRenderer.drawFilledCircle(cx, cy, radius, core, 22);
     }
 
     void renderCharacterScreen() {
@@ -6430,58 +6636,85 @@ struct GameApplication::Impl {
             return;
         }
 
-        const ui::CharacterPanelLayout panel = ui::computeCharacterPanelLayout(currentUiScale());
-        if (uiAssets.isLoaded()) {
-            const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-            uiRenderer.drawNineSlice(
-                uiAssets.inventoryPanelSlice(),
-                panel.panel.x,
-                panel.panel.y,
-                panel.panel.width,
-                panel.panel.height,
-                currentUiScale().dim(16.0F),
-                white);
-        } else {
-            const float panelColor[4] = {0.08F, 0.09F, 0.14F, 0.96F};
-            const float borderColor[4] = {0.55F, 0.4F, 0.95F, 1.0F};
-            uiRenderer.drawFilledRect(
-                panel.panel.x, panel.panel.y, panel.panel.width, panel.panel.height, panelColor);
-            uiRenderer.drawOutlineRect(
-                panel.panel.x, panel.panel.y, panel.panel.width, panel.panel.height, borderColor);
-        }
+        const ui::UiScale scale = currentUiScale();
+        const ui::CharacterPanelLayout panel = ui::computeCharacterPanelLayout(scale);
+        const float frame[4] = {0.04F, 0.035F, 0.05F, 0.96F};
+        const float gold[4] = {0.72F, 0.52F, 0.18F, 1.0F};
+        uiRenderer.drawFilledRect(panel.panel.x, panel.panel.y, panel.panel.width, panel.panel.height, frame);
+        uiRenderer.drawOutlineRect(panel.panel.x, panel.panel.y, panel.panel.width, panel.panel.height, gold, 2.0F);
+        const float titleFill[4] = {0.42F, 0.08F, 0.09F, 0.95F};
+        uiRenderer.drawFilledRect(
+            panel.titleBand.x, panel.titleBand.y, panel.titleBand.width, panel.titleBand.height, titleFill);
 
-        if (uiAssets.isLoaded()) {
-            const float portraitFrame[4] = {1.0F, 1.0F, 1.0F, 0.95F};
-            uiRenderer.drawNineSlice(
-                uiAssets.inventoryPanelSlice(),
-                panel.portrait.x - currentUiScale().dim(4.0F),
-                panel.portrait.y - currentUiScale().dim(4.0F),
-                panel.portrait.width + currentUiScale().dim(8.0F),
-                panel.portrait.height + currentUiScale().dim(8.0F),
-                currentUiScale().dim(8.0F),
-                portraitFrame);
-        }
+        const float parchment[4] = {0.62F, 0.48F, 0.30F, 0.96F};
+        const float ink[4] = {0.28F, 0.16F, 0.08F, 1.0F};
+        uiRenderer.drawFilledRect(
+            panel.spellsPane.x, panel.spellsPane.y, panel.spellsPane.width, panel.spellsPane.height, parchment);
+        uiRenderer.drawOutlineRect(
+            panel.spellsPane.x, panel.spellsPane.y, panel.spellsPane.width, panel.spellsPane.height, ink, 2.0F);
+
+        const float nebula[4] = {0.03F, 0.03F, 0.08F, 0.94F};
+        uiRenderer.drawFilledRect(
+            panel.talentsPane.x, panel.talentsPane.y, panel.talentsPane.width, panel.talentsPane.height, nebula);
+        const float redWash[4] = {0.55F, 0.08F, 0.05F, 0.28F};
+        const float blueWash[4] = {0.08F, 0.16F, 0.55F, 0.38F};
+        uiRenderer.drawFilledRect(
+            panel.talentsPane.x,
+            panel.talentsPane.y,
+            panel.talentsPane.width * 0.48F,
+            panel.talentsPane.height,
+            redWash);
+        uiRenderer.drawFilledRect(
+            panel.talentsPane.x + panel.talentsPane.width * 0.48F,
+            panel.talentsPane.y,
+            panel.talentsPane.width * 0.52F,
+            panel.talentsPane.height,
+            blueWash);
 
         drawPortraitInRect(panel.portrait);
         drawResourceBars(panel.hpBar, panel.xpBar);
+
+        const ui::AbilityBoardLayout board = ui::computeAbilityBoardLayout(panel, scale);
+        const systems::SkillId basicIds[] = {
+            systems::SkillId::PowerStrike, systems::SkillId::Cleave, systems::SkillId::Slam};
+        const systems::SkillId strongIds[] = {systems::SkillId::Whirlwind, systems::SkillId::Firebolt};
+        const systems::SkillId specialtyIds[] = {
+            systems::SkillId::Heal, systems::SkillId::Dash, systems::SkillId::Shout};
+        const auto paintSection = [&](const ui::AbilitySpellLayout& section, const systems::SkillId* ids) {
+            for (int index = 0; index < section.iconCount; ++index) {
+                const systems::SkillDefinition& skill = systems::skillDefinition(ids[index]);
+                const ui::Rect& icon = section.icons[static_cast<std::size_t>(index)];
+                const float fill[4] = {skill.colorR * 0.35F, skill.colorG * 0.35F, skill.colorB * 0.35F, 0.95F};
+                const float border[4] = {skill.colorR, skill.colorG, skill.colorB, 1.0F};
+                uiRenderer.drawFilledRect(icon.x, icon.y, icon.width, icon.height, fill);
+                uiRenderer.drawOutlineRect(icon.x, icon.y, icon.width, icon.height, border, 2.0F);
+            }
+        };
+        paintSection(board.basic, basicIds);
+        paintSection(board.strong, strongIds);
+        paintSection(board.specialties, specialtyIds);
 
         const ui::CharacterScreenData& base = overlayState.characterScreen();
         const bool inTown = zoneManager.activeZone() == gameplay::WorldZone::TOWN;
         const int upgradeCost = systems::soulUpgradeCost(base.statUpgradesPurchased);
         const bool canUpgrade = inTown && base.carriedSouls >= upgradeCost;
-
-        drawPanelButtonBackground(
-            panel.upgradeStrengthButton,
-            hoveredStatUpgradeButton_.has_value() && *hoveredStatUpgradeButton_ == 0,
-            canUpgrade);
-        drawPanelButtonBackground(
-            panel.upgradeDexterityButton,
-            hoveredStatUpgradeButton_.has_value() && *hoveredStatUpgradeButton_ == 1,
-            canUpgrade);
-        drawPanelButtonBackground(
-            panel.upgradeVitalityButton,
-            hoveredStatUpgradeButton_.has_value() && *hoveredStatUpgradeButton_ == 2,
-            canUpgrade);
+        const ui::Rect* nodes[] = {
+            &panel.upgradeStrengthButton, &panel.upgradeDexterityButton, &panel.upgradeVitalityButton};
+        const float nodeTints[3][4] = {
+            {0.85F, 0.28F, 0.18F, 1.0F},
+            {0.25F, 0.55F, 0.95F, 1.0F},
+            {0.25F, 0.78F, 0.38F, 1.0F},
+        };
+        const float link[4] = {0.85F, 0.68F, 0.28F, 0.55F};
+        for (int index = 0; index < 3; ++index) {
+            const ui::Rect& button = *nodes[index];
+            const float cx = button.x + button.width * 0.5F;
+            const float top = panel.upgradeHeader.y + panel.upgradeHeader.height + scale.dim(8.0F);
+            uiRenderer.drawFilledRect(cx - scale.dim(1.5F), top, scale.dim(3.0F), std::max(1.0F, button.y - top), link);
+            const bool hovered = hoveredStatUpgradeButton_.has_value() && *hoveredStatUpgradeButton_ == index;
+            drawPanelButtonBackground(button, hovered, canUpgrade);
+            drawTalentNode(button, nodeTints[index], hovered);
+        }
     }
 
     void renderCharacterScreenText() const {
@@ -6489,55 +6722,73 @@ struct GameApplication::Impl {
             return;
         }
 
-        const ui::CharacterPanelLayout panel = ui::computeCharacterPanelLayout(currentUiScale());
+        const ui::UiScale scale = currentUiScale();
+        const ui::CharacterPanelLayout panel = ui::computeCharacterPanelLayout(scale);
         const ui::CharacterScreenData& base = overlayState.characterScreen();
         const bool inTown = zoneManager.activeZone() == gameplay::WorldZone::TOWN;
         const int upgradeCost = systems::soulUpgradeCost(base.statUpgradesPurchased);
-        const bool canUpgrade = inTown && base.carriedSouls >= upgradeCost;
-        const float titleColor[4] = {0.95F, 0.92F, 1.0F, 1.0F};
-        const float labelColor[4] = {0.8F, 0.85F, 0.98F, 1.0F};
-        const float hintColor[4] = {0.55F, 0.58F, 0.64F, 0.85F};
-        const float headerColor[4] = {0.92F, 0.86F, 0.55F, 1.0F};
+        const float titleColor[4] = {0.98F, 0.9F, 0.62F, 1.0F};
+        const float ink[4] = {0.22F, 0.12F, 0.06F, 1.0F};
+        const float hintColor[4] = {0.72F, 0.68F, 0.58F, 0.9F};
+        const float headerColor[4] = {0.78F, 0.86F, 1.0F, 1.0F};
 
-        std::ostringstream title;
-        title << characterClassName(selectedClass) << "  |  Lv " << base.level << "  [C]";
-        drawBoundedText(panel.titleBand, title.str(), panel.titleScale, titleColor);
+        drawBoundedText(panel.titleBand, "ABILITIES", panel.titleScale, titleColor);
 
+        const ui::Rect spellsTitle{
+            panel.portrait.x + panel.portrait.width + scale.dim(8.0F),
+            panel.portrait.y,
+            std::max(scale.dim(40.0F), panel.spellsPane.x + panel.spellsPane.width - panel.portrait.x - panel.portrait.width - scale.dim(12.0F)),
+            scale.dim(22.0F)};
+        drawBoundedText(spellsTitle, "SPELLS", panel.bodyScale, ink);
         drawResourceBarLabels(panel.hpBar, panel.xpBar);
 
-        const float goldColor[4] = {0.95F, 0.82F, 0.28F, 1.0F};
+        const float goldColor[4] = {0.35F, 0.22F, 0.08F, 1.0F};
         std::ostringstream goldLine;
-        goldLine << "Gold " << tradeSystem.playerGold();
+        goldLine << "Gold " << ui::formatGroupedNumber(tradeSystem.playerGold());
         drawBoundedText(panel.goldLabel, goldLine.str(), panel.statLabelScale, goldColor);
 
+        const ui::AbilityBoardLayout board = ui::computeAbilityBoardLayout(panel, scale);
+        const systems::SkillId basicIds[] = {
+            systems::SkillId::PowerStrike, systems::SkillId::Cleave, systems::SkillId::Slam};
+        const systems::SkillId strongIds[] = {systems::SkillId::Whirlwind, systems::SkillId::Firebolt};
+        const systems::SkillId specialtyIds[] = {
+            systems::SkillId::Heal, systems::SkillId::Dash, systems::SkillId::Shout};
+        const auto labelSection = [&](const ui::AbilitySpellLayout& section, const char* title, const systems::SkillId* ids) {
+            drawBoundedText(section.header, title, panel.statLabelScale, ink);
+            const float glyph[4] = {0.98F, 0.96F, 0.9F, 1.0F};
+            for (int index = 0; index < section.iconCount; ++index) {
+                const systems::SkillDefinition& skill = systems::skillDefinition(ids[index]);
+                const char letter[2] = {skill.glyph, '\0'};
+                textRenderer.drawTextCentered(section.icons[static_cast<std::size_t>(index)], letter, panel.bodyScale, glyph);
+            }
+        };
+        labelSection(board.basic, "BASIC ATTACKS", basicIds);
+        labelSection(board.strong, "STRONG ATTACKS", strongIds);
+        labelSection(board.specialties, "SPECIALTIES", specialtyIds);
+
         std::ostringstream upgradeHeader;
-        if (inTown) {
-            upgradeHeader << "Soul forge — " << upgradeCost << " souls per stat";
-        } else {
-            upgradeHeader << "Soul forge — return to town to spend souls";
+        upgradeHeader << "TALENTS   " << base.carriedSouls << "/" << upgradeCost;
+        if (!inTown) {
+            upgradeHeader << "  town";
         }
         drawBoundedText(panel.upgradeHeader, upgradeHeader.str(), panel.statLabelScale, headerColor);
 
-        drawPanelButtonLabel(panel.upgradeStrengthButton, "+ STR", canUpgrade);
-        drawPanelButtonLabel(panel.upgradeDexterityButton, "+ DEX", canUpgrade);
-        drawPanelButtonLabel(panel.upgradeVitalityButton, "+ VIT", canUpgrade);
-
-        const std::vector<std::string> lines = buildCharacterScreenLines();
-        const float lineHeight = std::min(
-            currentUiScale().dim(18.0F),
-            panel.statsText.height / std::max<std::size_t>(lines.size(), 1));
-        float cursorY = panel.statsText.y;
-        for (const std::string& line : lines) {
-            const ui::Rect row{panel.statsText.x, cursorY, panel.statsText.width, lineHeight};
-            drawBoundedText(row, line, panel.statLabelScale, labelColor);
-            cursorY += lineHeight;
-            if (cursorY + lineHeight > panel.statsText.y + panel.statsText.height) {
-                break;
-            }
+        const ui::Rect* nodes[] = {
+            &panel.upgradeStrengthButton, &panel.upgradeDexterityButton, &panel.upgradeVitalityButton};
+        const char* names[] = {"STR", "DEX", "VIT"};
+        const int values[] = {base.strength, base.dexterity, base.vitality};
+        const float nodeText[4] = {0.98F, 0.96F, 0.9F, 1.0F};
+        for (int index = 0; index < 3; ++index) {
+            std::ostringstream label;
+            label << names[index] << ' ' << values[index];
+            drawBoundedText(*nodes[index], label.str(), panel.statLabelScale, nodeText);
         }
 
-        const char* footerHint = inTown ? "Click +STR / +DEX / +VIT to level up  |  I gear  |  Esc close"
-                                        : "Return to Town to level up  |  I gear  |  Esc close";
+        std::ostringstream soulsLine;
+        soulsLine << (inTown ? "Click a node to spend souls" : "Return to town to spend souls");
+        drawBoundedText(panel.statsText, soulsLine.str(), panel.statLabelScale, headerColor);
+
+        const char* footerHint = "Spells are on keys 1-8  |  I gear  |  Esc close";
         drawBoundedText(panel.footerHint, footerHint, panel.statLabelScale, hintColor);
     }
 
@@ -6789,12 +7040,27 @@ struct GameApplication::Impl {
             generatedUi_.texture(), rect.x, rect.y, rect.width, rect.height, uv.u0, uv.v0, uv.u1, uv.v1, white);
     }
 
+    [[nodiscard]] int countBeltPotions() const {
+        int count = 0;
+        for (int index = 0; index < playerInventory.capacity(); ++index) {
+            const systems::InventorySlot& slot = playerInventory.slotAt(index);
+            if (slot.item.has_value() && slot.item->category == systems::ItemCategory::Consumable) {
+                ++count;
+            }
+        }
+        return count;
+    }
+
     void drawGlobe(const ui::Rect& globe, const float ratio, const float liquid[4]) const {
         const float centerX = globe.x + globe.width * 0.5F;
         const float centerY = globe.y + globe.height * 0.5F;
         const float radius = globe.width * 0.5F;
-        const float well[4] = {0.03F, 0.02F, 0.04F, 0.95F};
-        uiRenderer.drawFilledCircle(centerX, centerY, radius * ui::kGlobeRingInnerRadiusFraction, well);
+        const float shadow[4] = {0.0F, 0.0F, 0.0F, 0.45F};
+        const float metal[4] = {0.28F, 0.2F, 0.1F, 0.95F};
+        const float well[4] = {0.02F, 0.015F, 0.02F, 0.98F};
+        uiRenderer.drawFilledCircle(centerX, centerY + radius * 0.06F, radius * 1.04F, shadow, 24);
+        uiRenderer.drawFilledCircle(centerX, centerY, radius, metal, 28);
+        uiRenderer.drawFilledCircle(centerX, centerY, radius * ui::kGlobeRingInnerRadiusFraction, well, 28);
         uiRenderer.drawCircleFill(
             centerX,
             centerY,
@@ -6804,43 +7070,72 @@ struct GameApplication::Impl {
             28,
             spriteAnimTime_ * 3.2F,
             radius * ui::kGlobeWaveAmplitudeFraction);
+        const float sheen[4] = {1.0F, 0.95F, 0.85F, 0.28F};
+        uiRenderer.drawFilledCircle(centerX - radius * 0.22F, centerY - radius * 0.28F, radius * 0.12F, sheen, 12);
         drawGeneratedFrame("globe_ring", globe);
     }
 
+    void drawHudVignette(const ui::HudConsoleLayout& console) const {
+        constexpr int kSteps = 6;
+        const float slice = console.panel.height / static_cast<float>(kSteps);
+        for (int step = 0; step < kSteps; ++step) {
+            const float fade = static_cast<float>(step + 1) / static_cast<float>(kSteps);
+            const float vignette[4] = {0.0F, 0.0F, 0.01F, 0.22F * fade * fade};
+            uiRenderer.drawFilledRect(
+                console.panel.x,
+                console.panel.y + slice * static_cast<float>(step),
+                console.panel.width,
+                slice + 1.0F,
+                vignette);
+        }
+    }
+
     void renderHudConsole() const {
-        const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(currentUiScale());
-        const float trim[4] = {0.72F, 0.56F, 0.24F, 1.0F};
-        drawStonePlaque(console.panel);
+        const ui::UiScale scale = currentUiScale();
+        const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(scale);
+        const float trim[4] = {0.78F, 0.6F, 0.24F, 1.0F};
+        drawHudVignette(console);
 
         const systems::EffectiveCharacterStats effective = effectiveCharacterStats();
         const int maxHealth = std::max(effective.maxHealth, 1);
         const float healthRatio = static_cast<float>(playerCurrentHealth_) / static_cast<float>(maxHealth);
         const float manaRatio = skillBar_.manaRatio();
-        const float healthLiquid[4] = {0.72F, 0.08F, 0.1F, 0.95F};
-        const float manaLiquid[4] = {0.15F, 0.28F, 0.85F, 0.95F};
+        const float healthLiquid[4] = {0.78F, 0.06F, 0.08F, 0.96F};
+        const float manaLiquid[4] = {0.12F, 0.28F, 0.92F, 0.96F};
         drawGlobe(console.healthGlobe, healthRatio, healthLiquid);
         drawGlobe(console.manaGlobe, manaRatio, manaLiquid);
 
+        const float badge[4] = {0.08F, 0.02F, 0.02F, 0.82F};
+        const float badgeRim[4] = {0.85F, 0.62F, 0.2F, 0.95F};
+        uiRenderer.drawFilledRect(
+            console.levelBadge.x, console.levelBadge.y, console.levelBadge.width, console.levelBadge.height, badge);
+        uiRenderer.drawOutlineRect(
+            console.levelBadge.x, console.levelBadge.y, console.levelBadge.width, console.levelBadge.height, badgeRim, 1.0F);
+
         const ui::CharacterScreenData& base = overlayState.characterScreen();
-        const int nextCost = systems::soulUpgradeCost(base.statUpgradesPurchased);
-        const float soulRatio = nextCost > 0
-                                    ? std::min(1.0F, static_cast<float>(base.carriedSouls) / static_cast<float>(nextCost))
-                                    : 0.0F;
-        const float xpEmpty[4] = {0.12F, 0.1F, 0.08F, 1.0F};
-        const float xpFill[4] = {0.85F, 0.68F, 0.18F, 1.0F};
+        const int nextXp = std::max(base.experienceToNextLevel, 1);
+        const float xpRatio = std::clamp(static_cast<float>(base.experience) / static_cast<float>(nextXp), 0.0F, 1.0F);
+        const float xpEmpty[4] = {0.08F, 0.07F, 0.05F, 0.9F};
+        const float xpFill[4] = {0.92F, 0.72F, 0.2F, 1.0F};
         uiRenderer.drawFilledRect(console.xpBar.x, console.xpBar.y, console.xpBar.width, console.xpBar.height, xpEmpty);
-        if (soulRatio > 0.0F) {
+        if (xpRatio > 0.0F) {
             uiRenderer.drawFilledRect(
-                console.xpBar.x, console.xpBar.y, console.xpBar.width * soulRatio, console.xpBar.height, xpFill);
+                console.xpBar.x, console.xpBar.y, console.xpBar.width * xpRatio, console.xpBar.height, xpFill);
         }
 
-        const float cooldown[4] = {0.02F, 0.015F, 0.01F, 0.62F};
+        const float cooldown[4] = {0.02F, 0.01F, 0.01F, 0.72F};
+        const float keyBand = scale.dim(ui::kHudHotkeyBand);
         for (int slot = 0; slot < ui::HudConsoleLayout::kSkillSlotCount; ++slot) {
             const ui::Rect& bounds = console.skillSlots[static_cast<std::size_t>(slot)];
             drawGeneratedFrame("hotbar_frame", bounds);
             if (!generatedUi_.isLoaded()) {
                 uiRenderer.drawOutlineRect(bounds.x, bounds.y, bounds.width, bounds.height, trim, 2.0F);
             }
+            const systems::SkillDefinition& skill = systems::skillDefinition(skillBar_.slot(slot));
+            const ui::Rect glyph = ui::hudGlyphRect(bounds, keyBand);
+            const float pad = glyph.width * 0.14F;
+            const float fill[4] = {skill.colorR * 0.55F, skill.colorG * 0.55F, skill.colorB * 0.55F, 0.92F};
+            uiRenderer.drawFilledRect(glyph.x + pad, glyph.y + pad, glyph.width - pad * 2.0F, glyph.height - pad * 2.0F, fill);
             const float ratio = skillBar_.cooldownRatio(slot);
             if (ratio > 0.0F) {
                 uiRenderer.drawRadialCooldown(
@@ -6851,11 +7146,35 @@ struct GameApplication::Impl {
                     cooldown);
             }
         }
+
+        int beltIndex = 0;
         for (const ui::Rect& bounds : console.beltSlots) {
             drawGeneratedFrame("hotbar_frame", bounds);
             if (!generatedUi_.isLoaded()) {
                 uiRenderer.drawOutlineRect(bounds.x, bounds.y, bounds.width, bounds.height, trim, 2.0F);
             }
+            if (beltIndex == 0) {
+                const float vial[4] = {0.75F, 0.1F, 0.12F, 0.95F};
+                const float pad = bounds.width * 0.22F;
+                uiRenderer.drawFilledRect(
+                    bounds.x + pad, bounds.y + pad, bounds.width - pad * 2.0F, bounds.height - pad * 2.0F, vial);
+                systems::ItemMetadata potion{};
+                potion.category = systems::ItemCategory::Consumable;
+                drawItemIcon(bounds, potion);
+            }
+            ++beltIndex;
+        }
+
+        for (int index = 0; index < ui::HudConsoleLayout::kMenuIconCount; ++index) {
+            const ui::Rect& icon = console.menuIcons[static_cast<std::size_t>(index)];
+            const bool hovered = hoveredHudMenu_ == index;
+            const float cx = icon.x + icon.width * 0.5F;
+            const float cy = icon.y + icon.height * 0.5F;
+            const float radius = icon.width * 0.5F;
+            const float rim[4] = {0.82F, 0.62F, 0.24F, hovered ? 1.0F : 0.88F};
+            const float core[4] = {hovered ? 0.22F : 0.08F, hovered ? 0.14F : 0.05F, 0.04F, 0.94F};
+            uiRenderer.drawFilledCircle(cx, cy, radius, rim, 18);
+            uiRenderer.drawFilledCircle(cx, cy, radius * 0.78F, core, 18);
         }
     }
 
@@ -6864,8 +7183,6 @@ struct GameApplication::Impl {
         const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(scale);
         const float text[4] = {0.96F, 0.94F, 0.88F, 1.0F};
         const float shadow[4] = {0.0F, 0.0F, 0.0F, 0.85F};
-        const systems::EffectiveCharacterStats effective = effectiveCharacterStats();
-        const int maxHealth = std::max(effective.maxHealth, 1);
 
         const auto drawFittedCentered = [&](const ui::Rect& bounds, const std::string& value, float textScale) {
             const float measured = textRenderer.measureTextWidth(value.c_str(), textScale);
@@ -6878,28 +7195,169 @@ struct GameApplication::Impl {
         };
 
         std::ostringstream health;
-        health << playerCurrentHealth_ << "/" << maxHealth;
+        health << playerCurrentHealth_;
         drawFittedCentered(console.healthLabel, health.str(), console.labelScale);
 
         std::ostringstream mana;
-        mana << skillBar_.mana() << "/" << skillBar_.maxMana();
-        drawFittedCentered(console.manaLabel, mana.str(), console.labelScale);
+        mana << skillBar_.mana();
+        drawFittedCentered(console.manaLabel, mana.str(), console.labelScale * 0.9F);
 
         const ui::CharacterScreenData& base = overlayState.characterScreen();
         std::ostringstream level;
-        level << "Lv " << base.level << "  " << systems::formatSoulGainMultiplier(base.soulGainMultiplier)
-              << "  Depth " << runProgression_.depth();
-        drawBoundedText(console.levelLabel, level.str(), console.hotkeyScale, text);
+        level << "Lv. " << base.level;
+        const float measuredLevel = textRenderer.measureTextWidth(level.str().c_str(), console.hotkeyScale);
+        float levelScale = console.hotkeyScale;
+        if (measuredLevel > console.levelBadge.width && measuredLevel > 1.0F) {
+            levelScale *= console.levelBadge.width / measuredLevel;
+        }
+        const float levelColor[4] = {0.98F, 0.86F, 0.42F, 1.0F};
+        const ui::Rect levelShadow{
+            console.levelBadge.x + 1.0F, console.levelBadge.y + 1.0F, console.levelBadge.width, console.levelBadge.height};
+        textRenderer.drawTextCentered(levelShadow, level.str().c_str(), levelScale, shadow);
+        textRenderer.drawTextCentered(console.levelBadge, level.str().c_str(), levelScale, levelColor);
 
-        const float hotkeyColor[4] = {0.86F, 0.72F, 0.38F, 0.95F};
+        std::ostringstream souls;
+        souls << "Souls " << base.carriedSouls << "   Depth " << runProgression_.depth();
+        const float soulColor[4] = {0.9F, 0.78F, 0.4F, 0.9F};
+        drawBoundedText(console.soulsLabel, souls.str(), console.hotkeyScale, soulColor);
+
+        const float hotkeyColor[4] = {0.9F, 0.76F, 0.38F, 0.95F};
         const float keyBand = scale.dim(ui::kHudHotkeyBand);
         for (int slot = 0; slot < ui::HudConsoleLayout::kSkillSlotCount; ++slot) {
             const ui::Rect& bounds = console.skillSlots[static_cast<std::size_t>(slot)];
             const systems::SkillDefinition& skill = systems::skillDefinition(skillBar_.slot(slot));
             const char glyph[2] = {skill.glyph, '\0'};
-            textRenderer.drawTextCentered(ui::hudGlyphRect(bounds, keyBand), glyph, console.labelScale, text);
+            const float remaining = skillBar_.cooldownRemaining(slot);
+            if (remaining >= 0.15F) {
+                std::ostringstream seconds;
+                seconds.setf(std::ios::fixed);
+                seconds.precision(remaining >= 10.0F ? 0 : 1);
+                seconds << remaining;
+                const float coolText[4] = {1.0F, 0.92F, 0.75F, 1.0F};
+                textRenderer.drawTextCentered(ui::hudGlyphRect(bounds, keyBand), seconds.str().c_str(), console.hotkeyScale, coolText);
+            } else {
+                textRenderer.drawTextCentered(ui::hudGlyphRect(bounds, keyBand), glyph, console.labelScale, text);
+            }
             const char hotkey[2] = {static_cast<char>('1' + slot), '\0'};
             textRenderer.drawTextCentered(ui::hudHotkeyRect(bounds, keyBand), hotkey, console.hotkeyScale, hotkeyColor);
+        }
+
+        const int potions = countBeltPotions();
+        std::ostringstream potionCount;
+        potionCount << potions;
+        const float potionColor[4] = {1.0F, 0.9F, 0.85F, 1.0F};
+        textRenderer.drawTextCentered(console.beltSlots[0], potionCount.str().c_str(), console.labelScale, potionColor);
+        textRenderer.drawTextCentered(ui::hudHotkeyRect(console.beltSlots[0], keyBand), "Q", console.hotkeyScale, hotkeyColor);
+
+        const char* menuGlyphs[ui::HudConsoleLayout::kMenuIconCount] = {"C", "I", "M", "S", "P"};
+        for (int index = 0; index < ui::HudConsoleLayout::kMenuIconCount; ++index) {
+            const float menuColor[4] = {
+                hoveredHudMenu_ == index ? 1.0F : 0.92F,
+                hoveredHudMenu_ == index ? 0.86F : 0.74F,
+                0.4F,
+                1.0F};
+            textRenderer.drawTextCentered(
+                console.menuIcons[static_cast<std::size_t>(index)], menuGlyphs[index], console.labelScale, menuColor);
+        }
+    }
+
+    void renderLootBeacons() const {
+        if (lootPresentation_.beacons().empty() || worldReadoutsHidden()) {
+            return;
+        }
+
+        const gameplay::CameraMatrices cameraMatrices = camera.matricesForTarget(cameraFocus());
+        const ui::UiScale scale = currentUiScale();
+        for (const ui::LootBeacon& beacon : lootPresentation_.beacons()) {
+            float screenX = 0.0F;
+            float screenY = 0.0F;
+            const glm::vec3 anchor(beacon.x, 0.15F, beacon.z);
+            if (!worldToScreen(
+                    anchor,
+                    cameraMatrices.view,
+                    cameraMatrices.projection,
+                    window.width(),
+                    window.height(),
+                    screenX,
+                    screenY)) {
+                continue;
+            }
+
+            const float fade = std::clamp(1.0F - beacon.ageSeconds / beacon.lifetimeSeconds, 0.0F, 1.0F);
+            const float height = scale.dim(ui::LootPresentation::beamHeight(beacon.intensity));
+            const ui::LootLabel& top = beacon.labels.front();
+            const float baseWidth = scale.dim(14.0F + beacon.intensity * 7.0F);
+            const float outline[4] = {0.0F, 0.0F, 0.0F, fade * 0.45F};
+            uiRenderer.drawFilledRect(
+                screenX - baseWidth * 0.7F, screenY - height, baseWidth * 1.4F, height, outline);
+            constexpr int kSlices = 16;
+            for (int slice = 0; slice < kSlices; ++slice) {
+                const float t0 = static_cast<float>(slice) / static_cast<float>(kSlices);
+                const float t1 = static_cast<float>(slice + 1) / static_cast<float>(kSlices);
+                const float y = screenY - height * t1;
+                const float band = height / static_cast<float>(kSlices) + 1.0F;
+                const float width = baseWidth * (1.05F - 0.35F * t0);
+                const float alpha = fade * (0.62F + 0.38F * (1.0F - t0));
+                const float color[4] = {top.red, top.green, top.blue, alpha};
+                uiRenderer.drawFilledRect(screenX - width * 0.5F, y, width, band, color);
+            }
+            const float coreWidth = std::max(3.0F, baseWidth * 0.22F);
+            const float core[4] = {1.0F, 0.97F, 0.88F, fade * 0.9F};
+            uiRenderer.drawFilledRect(screenX - coreWidth * 0.5F, screenY - height, coreWidth, height, core);
+            const float glowWidth = baseWidth * 2.6F;
+            const float glow[4] = {top.red, top.green, top.blue, fade * 0.55F};
+            uiRenderer.drawFilledRect(screenX - glowWidth * 0.5F, screenY - scale.dim(4.0F), glowWidth, scale.dim(10.0F), glow);
+
+            const float lineHeight = scale.dim(16.0F);
+            const float textScale = scale.dim(beacon.intensity >= 1.6F ? 1.55F : 1.35F);
+            float cursorY = screenY - height - lineHeight * static_cast<float>(beacon.labels.size()) - scale.dim(4.0F);
+            cursorY = std::max(cursorY, scale.dim(8.0F));
+            for (const ui::LootLabel& label : beacon.labels) {
+                const float width = std::max(scale.dim(24.0F), textRenderer.measureTextWidth(label.name.c_str(), textScale));
+                const float plate[4] = {0.0F, 0.0F, 0.0F, fade * 0.62F};
+                uiRenderer.drawFilledRect(screenX - width * 0.5F - scale.dim(4.0F), cursorY - scale.dim(1.0F), width + scale.dim(8.0F), lineHeight, plate);
+                cursorY += lineHeight;
+            }
+        }
+    }
+
+    void renderLootBeaconLabels() const {
+        if (lootPresentation_.beacons().empty() || worldReadoutsHidden()) {
+            return;
+        }
+
+        const gameplay::CameraMatrices cameraMatrices = camera.matricesForTarget(cameraFocus());
+        const ui::UiScale scale = currentUiScale();
+        const float lineHeight = scale.dim(15.0F);
+        for (const ui::LootBeacon& beacon : lootPresentation_.beacons()) {
+            float screenX = 0.0F;
+            float screenY = 0.0F;
+            const glm::vec3 anchor(beacon.x, 0.15F, beacon.z);
+            if (!worldToScreen(
+                    anchor,
+                    cameraMatrices.view,
+                    cameraMatrices.projection,
+                    window.width(),
+                    window.height(),
+                    screenX,
+                    screenY)) {
+                continue;
+            }
+
+            const float fade = std::clamp(1.0F - beacon.ageSeconds / beacon.lifetimeSeconds, 0.0F, 1.0F);
+            const float height = scale.dim(ui::LootPresentation::beamHeight(beacon.intensity));
+            const float textScale = scale.dim(beacon.intensity >= 1.6F ? 1.55F : 1.3F);
+            float cursorY = screenY - height - lineHeight * static_cast<float>(beacon.labels.size());
+            cursorY = std::max(cursorY, scale.dim(8.0F));
+            for (const ui::LootLabel& label : beacon.labels) {
+                const float width = textRenderer.measureTextWidth(label.name.c_str(), textScale);
+                const float x = screenX - width * 0.5F;
+                const float shadowColor[4] = {0.0F, 0.0F, 0.0F, fade * 0.9F};
+                const float color[4] = {label.red, label.green, label.blue, fade};
+                textRenderer.drawText(x + 1.0F, cursorY + 1.0F, label.name.c_str(), textScale, shadowColor);
+                textRenderer.drawText(x, cursorY, label.name.c_str(), textScale, color);
+                cursorY += lineHeight;
+            }
         }
     }
 
@@ -6918,6 +7376,7 @@ struct GameApplication::Impl {
 
         uiRenderer.beginFrame();
         renderScreenFlash();
+        renderLootBeacons();
         renderInventoryOverlay();
         renderCharacterScreen();
         renderTradePanels();
@@ -6934,6 +7393,7 @@ struct GameApplication::Impl {
 
         textRenderer.beginOverlay();
         renderHudConsoleLabels();
+        renderLootBeaconLabels();
         renderHudInfoStripLabel();
         renderFpsLabel();
         renderLaneBanner();
@@ -6983,6 +7443,7 @@ struct GameApplication::Impl {
             refreshManaPool();
             skillBar_.update(deltaSeconds);
         }
+        lootPresentation_.update(deltaSeconds);
         // Hit-stop slows the simulated world for a few frames while input/UI stay responsive.
         const float simulationDelta = deltaSeconds * combatFeedback_.timeScale();
 

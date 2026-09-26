@@ -238,81 +238,132 @@ InventoryPaperDollLayout computeInventoryPaperDollLayout(
 
 CharacterPanelLayout computeCharacterPanelLayout(const UiScale& scale) noexcept {
     CharacterPanelLayout layout{};
-    const float panelW = scale.dim(500.0F);
-    const float panelH = scale.dim(548.0F);
-    const float pad = scale.dim(18.0F);
     const float topLimit = scale.dim(8.0F);
     const float bottomLimit =
         static_cast<float>(scale.height) - scale.dim(kReferenceHudConsoleHeight) - scale.dim(12.0F);
+    const float maxHeight = std::max(scale.dim(360.0F), bottomLimit - topLimit);
+    const float panelH = std::min(scale.dim(560.0F), maxHeight);
+    const float panelW = std::min(scale.dim(940.0F), static_cast<float>(scale.width) - scale.dim(24.0F));
     const float centeredY = static_cast<float>(scale.height) * 0.5F - panelH * 0.5F;
     const float panelY = std::clamp(centeredY, topLimit, std::max(topLimit, bottomLimit - panelH));
+    const float pad = scale.dim(16.0F);
     layout.panel = {
-        static_cast<float>(scale.width) * 0.5F - panelW * 0.5F,
+        (static_cast<float>(scale.width) - panelW) * 0.5F,
         panelY,
         panelW,
         panelH};
 
     layout.titleBand = {
         layout.panel.x + pad,
-        layout.panel.y + scale.dim(10.0F),
+        layout.panel.y + scale.dim(8.0F),
         panelW - pad * 2.0F,
-        scale.dim(30.0F)};
+        scale.dim(28.0F)};
 
-    const float headerBottom = layout.titleBand.y + layout.titleBand.height + scale.dim(6.0F);
-    const float portraitSize = scale.dim(84.0F);
-    layout.portrait = {layout.panel.x + pad, headerBottom, portraitSize, portraitSize};
+    const float headerBottom = layout.titleBand.y + layout.titleBand.height + scale.dim(8.0F);
+    const float leftWidth = panelW * 0.46F;
+    const float portraitSize = scale.dim(72.0F);
+    layout.portrait = {
+        layout.panel.x + pad + scale.dim(8.0F),
+        headerBottom,
+        portraitSize,
+        portraitSize};
 
-    const float barX = layout.portrait.x + portraitSize + scale.dim(12.0F);
-    const float barWidth = layout.panel.x + layout.panel.width - pad - barX;
-    const float barHeight = scale.dim(15.0F);
-    layout.hpBar = {barX, headerBottom + scale.dim(6.0F), barWidth, barHeight};
-    layout.xpBar = {
-        barX,
-        layout.hpBar.y + barHeight + scale.dim(8.0F),
-        barWidth,
-        barHeight};
-    layout.goldLabel = {
-        barX,
-        layout.xpBar.y + barHeight + scale.dim(8.0F),
-        barWidth,
-        scale.dim(18.0F)};
+    const float barHeight = scale.dim(12.0F);
+    const float barWidth = std::max(scale.dim(80.0F), leftWidth - scale.dim(16.0F));
+    float cursorY = layout.portrait.y + portraitSize + scale.dim(8.0F);
+    layout.hpBar = {layout.panel.x + pad, cursorY, barWidth, barHeight};
+    cursorY += barHeight + scale.dim(6.0F);
+    layout.xpBar = {layout.panel.x + pad, cursorY, barWidth, barHeight};
+    cursorY += barHeight + scale.dim(6.0F);
+    layout.goldLabel = {layout.panel.x + pad, cursorY, barWidth, scale.dim(16.0F)};
 
-    const float upgradeSectionY = layout.portrait.y + portraitSize + scale.dim(14.0F);
-    const float upgradeHeaderHeight = scale.dim(22.0F);
-    layout.upgradeHeader = {
+    const float footerHeight = scale.dim(20.0F);
+    layout.footerHint = {
         layout.panel.x + pad,
-        upgradeSectionY,
+        layout.panel.y + panelH - footerHeight - scale.dim(6.0F),
         panelW - pad * 2.0F,
-        upgradeHeaderHeight};
+        footerHeight};
 
-    const float buttonY = upgradeSectionY + upgradeHeaderHeight + scale.dim(6.0F);
-    const float buttonHeight = scale.dim(34.0F);
-    const float buttonGap = scale.dim(8.0F);
-    const float buttonWidth = (panelW - pad * 2.0F - buttonGap * 2.0F) / 3.0F;
-    float buttonX = layout.panel.x + pad;
+    const float rightX = layout.panel.x + pad + leftWidth + scale.dim(12.0F);
+    const float rightW = layout.panel.x + panelW - pad - rightX;
+    layout.upgradeHeader = {rightX, headerBottom, rightW, scale.dim(22.0F)};
+
+    const float buttonHeight = scale.dim(36.0F);
+    const float buttonGap = scale.dim(10.0F);
+    const float inner = scale.dim(8.0F);
+    const float buttonWidth = std::max(scale.dim(36.0F), (rightW - inner * 2.0F - buttonGap * 2.0F) / 3.0F);
+    const float statsHeight = scale.dim(64.0F);
+    const float buttonY = layout.footerHint.y - scale.dim(8.0F) - statsHeight - scale.dim(8.0F) - buttonHeight;
+    float buttonX = rightX + inner;
     layout.upgradeStrengthButton = {buttonX, buttonY, buttonWidth, buttonHeight};
     buttonX += buttonWidth + buttonGap;
     layout.upgradeDexterityButton = {buttonX, buttonY, buttonWidth, buttonHeight};
     buttonX += buttonWidth + buttonGap;
     layout.upgradeVitalityButton = {buttonX, buttonY, buttonWidth, buttonHeight};
 
-    const float statsY = buttonY + buttonHeight + scale.dim(14.0F);
-    const float footerHeight = scale.dim(22.0F);
-    layout.footerHint = {
-        layout.panel.x + pad,
-        layout.panel.y + panelH - footerHeight - scale.dim(4.0F),
-        panelW - pad * 2.0F,
-        footerHeight};
+    const float statsY = buttonY + buttonHeight + scale.dim(8.0F);
     layout.statsText = {
-        layout.panel.x + pad,
+        rightX + inner,
         statsY,
-        panelW - pad * 2.0F,
-        layout.footerHint.y - scale.dim(8.0F) - statsY};
+        std::max(scale.dim(40.0F), rightW - inner * 2.0F),
+        std::max(scale.dim(18.0F), layout.footerHint.y - scale.dim(6.0F) - statsY)};
 
-    layout.titleScale = scale.dim(2.0F);
-    layout.bodyScale = scale.dim(1.55F);
-    layout.statLabelScale = scale.dim(1.35F);
+    layout.spellsPane = {
+        layout.panel.x + pad,
+        headerBottom,
+        leftWidth,
+        std::max(scale.dim(80.0F), layout.footerHint.y - scale.dim(6.0F) - headerBottom)};
+    layout.talentsPane = {
+        rightX,
+        headerBottom,
+        std::max(scale.dim(80.0F), rightW),
+        layout.spellsPane.height};
+
+    layout.titleScale = scale.dim(2.1F);
+    layout.bodyScale = scale.dim(1.45F);
+    layout.statLabelScale = scale.dim(1.25F);
     return layout;
+}
+
+AbilityBoardLayout computeAbilityBoardLayout(
+    const CharacterPanelLayout& panel,
+    const UiScale& scale) noexcept {
+    AbilityBoardLayout board{};
+    const float pad = scale.dim(10.0F);
+    const float headerH = scale.dim(16.0F);
+    const float gap = scale.dim(8.0F);
+    const float sectionGap = scale.dim(12.0F);
+    const float left = panel.spellsPane.x + pad;
+    const float width = std::max(scale.dim(40.0F), panel.spellsPane.width - pad * 2.0F);
+    float cursorY = std::max(panel.goldLabel.y + panel.goldLabel.height, panel.portrait.y + panel.portrait.height) +
+                    scale.dim(10.0F);
+    const float bottom = panel.spellsPane.y + panel.spellsPane.height - scale.dim(6.0F);
+    const float available = std::max(scale.dim(48.0F), bottom - cursorY);
+    const float chrome = headerH * 3.0F + sectionGap * 3.0F + gap;
+    float icon = scale.dim(40.0F);
+    const float needed = chrome + icon * 3.0F;
+    if (needed > available) {
+        icon = std::max(scale.dim(22.0F), (available - chrome) / 3.0F);
+    }
+
+    const auto place = [&](AbilitySpellLayout& section, const int count) {
+        section.header = {left, cursorY, width, headerH};
+        cursorY += headerH + scale.dim(4.0F);
+        section.iconCount = count;
+        for (int index = 0; index < count; ++index) {
+            section.icons[static_cast<std::size_t>(index)] = {
+                left + static_cast<float>(index) * (icon + gap),
+                cursorY,
+                icon,
+                icon};
+        }
+        cursorY += icon + sectionGap;
+    };
+
+    place(board.basic, 3);
+    place(board.strong, 2);
+    place(board.specialties, 3);
+    return board;
 }
 
 Rect TradeWindowLayout::playerSlotRect(const int index) const noexcept {
@@ -554,6 +605,61 @@ TooltipBoxLayout computeTooltipBoxLayout(
 
     layout.box = {boxX, boxY, boxW, boxH};
     return layout;
+}
+
+ItemCompareCards placeItemCompareCards(
+    const UiScale& scale,
+    const float anchorX,
+    const float anchorY,
+    const std::vector<std::string>& candidateLines,
+    const std::vector<std::string>& equippedLines,
+    const float textScale,
+    const TextWidthMeasureFn& measureWidth,
+    const int screenWidth,
+    const int screenHeight) noexcept {
+    ItemCompareCards cards{};
+    cards.candidate = computeTooltipBoxLayout(
+        scale, anchorX, anchorY, candidateLines, textScale, measureWidth, screenWidth, screenHeight);
+    if (equippedLines.empty()) {
+        return cards;
+    }
+
+    cards.showEquipped = true;
+    cards.equipped = computeTooltipBoxLayout(
+        scale, anchorX, anchorY, equippedLines, textScale, measureWidth, screenWidth, screenHeight);
+    const float gap = scale.dim(10.0F);
+    const float margin = scale.dim(8.0F);
+    cards.equipped.box.x = cards.candidate.box.x - cards.equipped.box.width - gap;
+    cards.equipped.box.y = cards.candidate.box.y;
+
+    if (cards.equipped.box.x < margin) {
+        const float shift = margin - cards.equipped.box.x;
+        cards.equipped.box.x += shift;
+        cards.candidate.box.x += shift;
+    }
+    const float right = static_cast<float>(screenWidth) - margin;
+    if (cards.candidate.box.x + cards.candidate.box.width > right) {
+        const float shift = cards.candidate.box.x + cards.candidate.box.width - right;
+        cards.candidate.box.x -= shift;
+        cards.equipped.box.x -= shift;
+    }
+    if (cards.equipped.box.x < margin) {
+        cards.equipped.box.x = margin;
+    }
+
+    const auto clampY = [&](Rect& box) {
+        const float bottom = static_cast<float>(screenHeight) - margin;
+        if (box.y + box.height > bottom) {
+            box.y = bottom - box.height;
+        }
+        if (box.y < margin) {
+            box.y = margin;
+        }
+    };
+    clampY(cards.candidate.box);
+    cards.equipped.box.y = cards.candidate.box.y;
+    clampY(cards.equipped.box);
+    return cards;
 }
 
 HudChromeLayout computeHudChromeLayout(const UiScale& scale) noexcept {

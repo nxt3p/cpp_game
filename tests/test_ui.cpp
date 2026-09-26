@@ -5,6 +5,7 @@
 
 #include "ui/GlobeFill.hpp"
 #include "ui/HudConsoleLayout.hpp"
+#include "ui/LootPresentation.hpp"
 #include "ui/MinimapSystem.hpp"
 #include "ui/UiInteraction.hpp"
 #include "ui/UiLayout.hpp"
@@ -43,6 +44,20 @@ TEST_CASE("Character panel layout reserves non-overlapping level up buttons", "[
     CHECK(layout.statsText.y >= layout.upgradeStrengthButton.y + layout.upgradeStrengthButton.height);
     CHECK(layout.footerHint.y > layout.statsText.y);
     CHECK(layout.titleBand.y + layout.titleBand.height <= layout.portrait.y);
+    CHECK(layout.spellsPane.width > 0.0F);
+    CHECK(layout.talentsPane.x >= layout.spellsPane.x + layout.spellsPane.width - 1.0F);
+    CHECK(layout.talentsPane.contains(
+        layout.upgradeStrengthButton.x + layout.upgradeStrengthButton.width * 0.5F,
+        layout.upgradeStrengthButton.y + layout.upgradeStrengthButton.height * 0.5F));
+
+    const ui::AbilityBoardLayout board = ui::computeAbilityBoardLayout(layout, scale);
+    CHECK(board.basic.iconCount == 3);
+    CHECK(board.strong.iconCount == 2);
+    CHECK(board.specialties.iconCount == 3);
+    CHECK(board.specialties.header.y > board.basic.icons[0].y);
+    CHECK(layout.spellsPane.contains(
+        board.basic.icons[0].x + board.basic.icons[0].width * 0.5F,
+        board.basic.icons[0].y + board.basic.icons[0].height * 0.5F));
 }
 
 TEST_CASE("Paper doll inventory layout exposes fifteen equipment slots", "[ui][layout]") {
@@ -158,6 +173,38 @@ TEST_CASE("Ui interaction registry resolves slots and blocking regions", "[ui][i
     CHECK(registry.blocksWorldInput(tradeX, tradeY));
 
     CHECK_FALSE(registry.blocksWorldInput(2.0F, 2.0F));
+}
+
+TEST_CASE("Grouped numbers and stacked loot beams", "[ui][loot]") {
+    CHECK(ui::formatGroupedNumber(39007431) == "39,007,431");
+    CHECK(ui::formatGroupedNumber(0) == "0");
+    CHECK(ui::formatGroupedNumber(-1200) == "-1,200");
+
+    ui::LootPresentation loot;
+    std::vector<ui::LootLabel> labels = {
+        {"Rusty Knife", 0.8F, 0.8F, 0.8F, 0},
+        {"Infinity Edge", 1.0F, 0.6F, 0.16F, 2},
+        {"Divine Brand", 0.3F, 0.95F, 0.4F, 3},
+    };
+    loot.spawn(1.0F, 0.0F, 2.0F, labels, 2.2F);
+    REQUIRE(loot.beacons().size() == 1);
+    CHECK(loot.beacons().front().labels.front().name == "Divine Brand");
+    CHECK(loot.beacons().front().labels.back().name == "Rusty Knife");
+    CHECK(ui::LootPresentation::beamHeight(2.2F) > ui::LootPresentation::beamHeight(0.55F));
+    loot.update(7.0F);
+    CHECK(loot.beacons().empty());
+}
+
+TEST_CASE("Item compare cards sit side by side on screen", "[ui][tooltip]") {
+    const ui::UiScale scale(1280, 720);
+    const std::vector<std::string> candidate = {"Bleeding Edge", "Divine Weapon", "826 DPS"};
+    const std::vector<std::string> equipped = {"Infinity Edge", "Legendary Weapon", "646 DPS"};
+    const ui::ItemCompareCards cards = ui::placeItemCompareCards(
+        scale, 700.0F, 180.0F, candidate, equipped, 1.7F, ui::TextWidthMeasureFn{}, 1280, 720);
+    CHECK(cards.showEquipped);
+    CHECK(cards.equipped.box.x + cards.equipped.box.width <= cards.candidate.box.x + 1.0F);
+    CHECK(cards.equipped.box.x >= 0.0F);
+    CHECK(cards.candidate.box.x + cards.candidate.box.width <= 1280.0F);
 }
 
 TEST_CASE("Item tooltip layout reserves border inset and content padding", "[ui][tooltip]") {

@@ -182,9 +182,16 @@ TEST_CASE("Hud console layout keeps globes, slots and strip inside the screen", 
         CHECK(console.panel.y + console.panel.height == Catch::Approx(screenH).margin(0.01F));
         CHECK(console.panel.width == Catch::Approx(screenW));
         CHECK(console.healthGlobe.x >= 0.0F);
-        CHECK(console.manaGlobe.x + console.manaGlobe.width <= screenW);
+        CHECK(console.manaGlobe.x > console.healthGlobe.x);
+        CHECK(console.manaGlobe.x < console.healthGlobe.x + console.healthGlobe.width);
         CHECK(console.healthGlobe.x + console.healthGlobe.width < console.skillSlots[0].x);
-        CHECK(console.beltSlots[3].x + console.beltSlots[3].width < console.manaGlobe.x);
+        CHECK(console.skillSlots[0].x >= console.manaGlobe.x + console.manaGlobe.width - 1.0F);
+        CHECK(console.menuIcons[0].x > console.beltSlots[3].x + console.beltSlots[3].width - 1.0F);
+        CHECK(console.menuIcons[ui::HudConsoleLayout::kMenuIconCount - 1].x +
+                  console.menuIcons[ui::HudConsoleLayout::kMenuIconCount - 1].width <=
+              screenW + 0.5F);
+        CHECK(console.levelBadge.width > 0.0F);
+        CHECK(console.levelBadge.y + console.levelBadge.height <= screenH + 0.5F);
         CHECK(console.messageStrip.y + console.messageStrip.height <= console.panel.y);
 
         for (int slot = 1; slot < ui::HudConsoleLayout::kSkillSlotCount; ++slot) {

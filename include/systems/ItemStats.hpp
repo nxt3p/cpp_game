@@ -4,6 +4,7 @@
 #include "systems/Inventory.hpp"
 #include "systems/ItemTypes.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,33 @@ void applyItemDefinition(ItemMetadata& item);
     const ui::CharacterScreenData& baseStats,
     const Equipment& equipment);
 [[nodiscard]] std::vector<std::string> formatItemStatLines(const ItemMetadata& item);
+
+enum class TooltipTone : std::uint8_t {
+    Title,
+    Meta,
+    Headline,
+    Attribute,
+    Effect,
+    Footer,
+    Compare,
+};
+
+struct TooltipLine {
+    std::string text;
+    TooltipTone tone{TooltipTone::Meta};
+};
+
+struct ItemTooltipCard {
+    ItemRarity rarity{ItemRarity::Common};
+    std::vector<TooltipLine> lines;
+};
+
+/// Structured compare card. `banner` is an optional lead line such as "Equipped".
+[[nodiscard]] ItemTooltipCard buildItemTooltipCard(const ItemMetadata& item, const char* banner = nullptr);
+
+/// Weapon/off-hand presentation DPS from rolled damage, speed, item level, and rarity. 0 otherwise.
+[[nodiscard]] int estimateWeaponDps(const ItemMetadata& item);
+
 [[nodiscard]] std::string formatItemTooltip(const ItemMetadata& item);
 
 /// Signed stat deltas of `candidate` versus `equipped` (candidate - equipped), mastery included.

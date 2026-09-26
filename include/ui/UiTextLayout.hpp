@@ -22,4 +22,7 @@ using TextWidthMeasureFn = std::function<float(const char*, float)>;
     float maxWidthPixels,
     float scale) noexcept;
 
+/// 39007431 -> "39,007,431". Negative values keep the sign.
+[[nodiscard]] std::string formatGroupedNumber(int value);
+
 } // namespace ui

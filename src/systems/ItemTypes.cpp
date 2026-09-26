@@ -30,4 +30,22 @@ const char* rarityLabel(ItemRarity rarity) noexcept {
     return "Unknown";
 }
 
+RarityColor rarityColor(const ItemRarity rarity) noexcept {
+    switch (rarity) {
+    case ItemRarity::Rare:
+        return {0.45F, 0.66F, 1.0F};
+    case ItemRarity::Legendary:
+        return {1.0F, 0.62F, 0.16F};
+    case ItemRarity::Unique:
+        return {0.32F, 0.95F, 0.42F};
+    case ItemRarity::Common:
+    default:
+        return {0.82F, 0.82F, 0.78F};
+    }
+}
+
+int rarityRank(const ItemRarity rarity) noexcept {
+    return static_cast<int>(rarity);
+}
+
 } // namespace systems

@@ -145,10 +145,13 @@ void ParticleSystem::spawnLootPillar(
         const float angle = randomRange(0.0F, 6.28318530718F);
         const float radius = randomRange(0.05F, 0.35F * intensity);
         particle.position = worldPosition +
-                            glm::vec3(std::cos(angle) * radius, randomRange(0.0F, 0.4F), std::sin(angle) * radius);
-        particle.velocity = glm::vec3(0.0F, randomRange(2.5F, 5.5F) * intensity, 0.0F);
-        particle.size = randomRange(0.12F, 0.3F) * intensity;
-        particle.lifetimeSeconds = randomRange(0.8F, 1.6F);
+                            glm::vec3(std::cos(angle) * radius * 0.35F, randomRange(0.0F, 0.15F), std::sin(angle) * radius * 0.35F);
+        particle.velocity = glm::vec3(
+            std::cos(angle) * randomRange(0.02F, 0.18F),
+            randomRange(3.2F, 6.4F) * std::max(intensity, 0.6F),
+            std::sin(angle) * randomRange(0.02F, 0.18F));
+        particle.size = randomRange(0.08F, 0.2F) * std::max(intensity, 0.7F);
+        particle.lifetimeSeconds = randomRange(1.4F, 2.8F);
         particle.gravity = 0.0F;
         particle.drag = 0.4F;
         particle.sizeEndScale = 0.1F;

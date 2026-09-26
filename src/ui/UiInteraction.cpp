@@ -1,6 +1,7 @@
 #include "ui/UiInteraction.hpp"
 
 #include "systems/Equipment.hpp"
+#include "ui/HudConsoleLayout.hpp"
 
 namespace ui {
 
@@ -65,6 +66,10 @@ void buildInGameHitRegions(
     const HudChromeLayout hud = computeHudChromeLayout(scale);
     registry.push(WidgetKind::HudStatus, hud.statusHud);
     registry.push(WidgetKind::HudMessageStrip, hud.messageStrip);
+    const HudConsoleLayout console = computeHudConsoleLayout(scale);
+    for (int index = 0; index < HudConsoleLayout::kMenuIconCount; ++index) {
+        registry.push(WidgetKind::HudMenuButton, console.menuIcons[static_cast<std::size_t>(index)], index);
+    }
 
     const MinimapWidgetLayout minimap = computeMinimapWidgetLayout(
         scale, minimapAnchor, minimapMarginX, minimapMarginY, minimapFrameSize);

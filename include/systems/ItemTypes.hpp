@@ -73,7 +73,19 @@ struct ItemMetadata {
     int sockets{0};
 };
 
+struct RarityColor {
+    float red{0.8F};
+    float green{0.8F};
+    float blue{0.8F};
+};
+
 [[nodiscard]] int actionWeight(ActionType type) noexcept;
 [[nodiscard]] const char* rarityLabel(ItemRarity rarity) noexcept;
+
+/// Presentation tint shared by loot beams, nameplates, and tooltip titles.
+[[nodiscard]] RarityColor rarityColor(ItemRarity rarity) noexcept;
+
+/// Higher ranks stack above lower ones on a loot pile.
+[[nodiscard]] int rarityRank(ItemRarity rarity) noexcept;
 
 } // namespace systems

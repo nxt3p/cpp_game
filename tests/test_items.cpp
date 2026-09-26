@@ -37,6 +37,37 @@ TEST_CASE("Item tooltip lists stat lines", "[items]") {
     CHECK(tooltip.find("Scout Charm") != std::string::npos);
     CHECK(tooltip.find("Dexterity") != std::string::npos);
     CHECK(tooltip.find("Light Radius") != std::string::npos);
+    CHECK(tooltip.find("ilvl") != std::string::npos);
+    CHECK(tooltip.find("Price") != std::string::npos);
+
+    const systems::ItemTooltipCard card = systems::buildItemTooltipCard(charm, "Equipped");
+    CHECK(card.lines.front().text == "Equipped");
+    bool sawAttribute = false;
+    bool sawEffect = false;
+    for (const systems::TooltipLine& line : card.lines) {
+        if (line.tone == systems::TooltipTone::Attribute && line.text.find("Dexterity") != std::string::npos) {
+            sawAttribute = true;
+        }
+        if (line.tone == systems::TooltipTone::Effect && line.text.find("Light Radius") != std::string::npos) {
+            sawEffect = true;
+        }
+    }
+    CHECK(sawAttribute);
+    CHECK(sawEffect);
+
+    systems::ItemMetadata blade{};
+    blade.name = "Edge";
+    blade.category = systems::ItemCategory::Weapon;
+    blade.rarity = systems::ItemRarity::Legendary;
+    blade.itemLevel = 8;
+    blade.value = 120;
+    blade.bonuses.damage = 6;
+    blade.bonuses.attackSpeed = 0.2F;
+    const int dps = systems::estimateWeaponDps(blade);
+    CHECK(dps > 1);
+    CHECK(systems::formatItemTooltip(blade).find("DPS") != std::string::npos);
+    CHECK(systems::rarityColor(systems::ItemRarity::Unique).green >
+          systems::rarityColor(systems::ItemRarity::Legendary).green);
 }
 
 TEST_CASE("Gear light radius extends player torch reach when equipped", "[items]") {
