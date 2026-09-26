@@ -72,6 +72,20 @@ struct TavernGambleOdds {
     float mythical{0.0F};
 };
 
+enum class TavernPrize : std::uint8_t {
+    Mythical,
+    Unique,
+    Legendary,
+    Rare,
+    Magic,
+    Common,
+    Gold,
+    Nothing
+};
+
+/// Maps a unit roll onto the tavern table. Mythical occupies [0, odds.mythical).
+[[nodiscard]] TavernPrize tavernPrizeForRoll(float roll, const TavernGambleOdds& odds) noexcept;
+
 struct TavernGambleResult {
     bool paid{false};
     bool grantedItem{false};
@@ -134,7 +148,18 @@ public:
     /// Combat reels never pay mythical gear.
     [[nodiscard]] float combatMythicalChance() const noexcept { return 0.0F; }
 
+    /// Fraction of a jackpot that is unique instead of legendary. Mythical is not on this reel.
+    [[nodiscard]] float jackpotUniqueSlice(EntityTier tier) const noexcept;
+
+    /// Legendary chance for the current coin pool and pity: jackpot odds times (1 - unique slice).
+    /// Zero the pool and pity counter to read the base table (bosses sit near one in seven).
+    [[nodiscard]] float legendaryChance(EntityTier tier) const noexcept;
+
     [[nodiscard]] TavernGambleOdds tavernOdds() const noexcept;
+
+    /// Dry spins raise tavern legendary odds only, and only up to +0.02. Mythical stays 1/10000.
+    void setTavernPitySpins(int drySpins) noexcept;
+
     TavernGambleResult gambleTavern(int& playerGold);
 
     static constexpr float kTavernMythicalChance = 0.0001F;

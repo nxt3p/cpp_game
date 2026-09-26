@@ -38,36 +38,36 @@ CombatRarityWeights LootEngine::combatRarityWeights(const EntityTier tier) const
     CombatRarityWeights weights{};
     switch (tier) {
     case EntityTier::Minor:
-        weights.dropChance = 0.16F;
+        weights.dropChance = 0.22F;
         weights.common = 0.84F;
-        weights.magic = 0.11F;
-        weights.rare = 0.038F;
-        weights.legendary = 0.010F;
+        weights.magic = 0.12F;
+        weights.rare = 0.032F;
+        weights.legendary = 0.006F;
         weights.unique = 0.002F;
         break;
     case EntityTier::Elite:
-        weights.dropChance = 0.34F;
+        weights.dropChance = 0.42F;
         weights.common = 0.58F;
         weights.magic = 0.22F;
-        weights.rare = 0.12F;
-        weights.legendary = 0.055F;
-        weights.unique = 0.025F;
+        weights.rare = 0.13F;
+        weights.legendary = 0.05F;
+        weights.unique = 0.02F;
         break;
     case EntityTier::Boss:
-        weights.dropChance = 0.55F;
-        weights.common = 0.42F;
-        weights.magic = 0.26F;
-        weights.rare = 0.18F;
-        weights.legendary = 0.10F;
+        weights.dropChance = 0.66F;
+        weights.common = 0.36F;
+        weights.magic = 0.24F;
+        weights.rare = 0.20F;
+        weights.legendary = 0.16F;
         weights.unique = 0.04F;
         break;
     case EntityTier::Standard:
-        weights.dropChance = 0.24F;
+        weights.dropChance = 0.32F;
         weights.common = 0.72F;
-        weights.magic = 0.17F;
+        weights.magic = 0.18F;
         weights.rare = 0.075F;
-        weights.legendary = 0.025F;
-        weights.unique = 0.010F;
+        weights.legendary = 0.018F;
+        weights.unique = 0.007F;
         break;
     }
     weights.mythical = 0.0F;

@@ -29,6 +29,14 @@ struct TownBuildingDefinition {
 
 [[nodiscard]] TownBuildingDefinition townBuildingDefinition(TownBuilding building) noexcept;
 
+/// Gold and experience from one kill. Repairs are priced against this table, not against item sales.
+struct CombatKillReward {
+    int gold{0};
+    int experience{0};
+};
+
+[[nodiscard]] CombatKillReward combatKillReward(bool boss, bool elite, int depth) noexcept;
+
 /// Gold paid out for a kill so early town repairs are funded by fighting, not by item drops.
 [[nodiscard]] int combatGoldBounty(bool boss, bool elite, int depth) noexcept;
 

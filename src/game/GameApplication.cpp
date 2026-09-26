@@ -1,6 +1,7 @@
 #include "game/GameApplication.hpp"
 
 #include <algorithm>
+#include <array>
 
 #include "game/SaveGame.hpp"
 #include "game/AppFlow.hpp"
@@ -416,6 +417,7 @@ struct GameApplication::Impl {
     bool healerPanelOpen_{false};
     std::string townNotice_{};
     render::Texture townBackdrop_{};
+    std::array<render::Texture, 7> townPlates_{};
     bool townBackdropReady_{false};
     std::unordered_set<std::uint32_t> laneMobIds_{};
     std::unordered_set<std::uint32_t> eliteIds_{};
@@ -3760,11 +3762,7 @@ struct GameApplication::Impl {
         logInfo(hudMessage);
     }
 
-    void ensureTownBackdrop() {
-        if (townBackdropReady_) {
-            return;
-        }
-        const render::TownPixelBuffer image = render::paintTownBackdrop(320, 180);
+    [[nodiscard]] static std::vector<std::uint8_t> flipTownImage(const render::TownPixelBuffer& image) {
         std::vector<std::uint8_t> upright(image.rgba.size());
         const int stride = image.width * 4;
         for (int y = 0; y < image.height; ++y) {
@@ -3772,7 +3770,30 @@ struct GameApplication::Impl {
             const int dst = (image.height - 1 - y) * stride;
             std::copy(image.rgba.begin() + src, image.rgba.begin() + src + stride, upright.begin() + dst);
         }
-        townBackdropReady_ = townBackdrop_.uploadRgba(image.width, image.height, upright.data());
+        return upright;
+    }
+
+    void uploadTownPlate(const int index, const render::TownPlateKind kind, const bool restored) {
+        const render::TownPixelBuffer image = render::paintTownPlate(kind, restored, kind == render::TownPlateKind::Road ? 320 : 160, kind == render::TownPlateKind::Road ? 72 : 210);
+        const std::vector<std::uint8_t> upright = flipTownImage(image);
+        static_cast<void>(townPlates_[static_cast<std::size_t>(index)].uploadRgba(
+            image.width, image.height, upright.data(), false));
+    }
+
+    void ensureTownBackdrop() {
+        if (townBackdropReady_) {
+            return;
+        }
+        const render::TownPixelBuffer image = render::paintTownBackdrop(480, 270);
+        const std::vector<std::uint8_t> upright = flipTownImage(image);
+        townBackdropReady_ = townBackdrop_.uploadRgba(image.width, image.height, upright.data(), false);
+        uploadTownPlate(0, render::TownPlateKind::Forge, false);
+        uploadTownPlate(1, render::TownPlateKind::Forge, true);
+        uploadTownPlate(2, render::TownPlateKind::Chapel, false);
+        uploadTownPlate(3, render::TownPlateKind::Chapel, true);
+        uploadTownPlate(4, render::TownPlateKind::Tavern, false);
+        uploadTownPlate(5, render::TownPlateKind::Tavern, true);
+        uploadTownPlate(6, render::TownPlateKind::Road, true);
     }
 
     void spinTavern() {
@@ -3902,27 +3923,39 @@ struct GameApplication::Impl {
         }
 
         const ui::TownSceneLayout layout = ui::computeTownSceneLayout(currentUiScale());
-        const auto paintBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building, const float ruined[4], const float restored[4]) {
+        const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+        const auto paintBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building, const int ruinedPlate, const int openPlate) {
             const bool repaired = townHub_.isRepaired(building);
-            const float* tint = repaired ? restored : ruined;
-            uiRenderer.drawFilledRect(rect.x, rect.y, rect.width, rect.height, tint);
-            const float border[4] = {0.86F, 0.68F, 0.32F, repaired ? 1.0F : 0.55F};
-            uiRenderer.drawOutlineRect(rect.x, rect.y, rect.width, rect.height, border, repaired ? 3.0F : 2.0F);
+            if (repaired) {
+                const float glow[4] = {1.0F, 0.72F, 0.28F, 0.28F};
+                uiRenderer.drawFilledCircle(
+                    rect.x + rect.width * 0.5F,
+                    rect.y + rect.height * 0.42F,
+                    std::min(rect.width, rect.height) * 0.22F,
+                    glow,
+                    22);
+            }
+            const render::Texture& plate = townPlates_[static_cast<std::size_t>(repaired ? openPlate : ruinedPlate)];
+            if (plate.isValid()) {
+                uiRenderer.drawTexturedRect(plate, rect.x, rect.y, rect.width, rect.height, white);
+            }
+            const float banner[4] = {0.12F, 0.07F, 0.04F, repaired ? 0.88F : 0.72F};
+            const float bannerEdge[4] = {0.86F, 0.62F, 0.28F, repaired ? 1.0F : 0.55F};
+            const float bannerY = rect.y + rect.height * 0.72F;
+            const float bannerH = std::min(54.0F, rect.height * 0.22F);
+            uiRenderer.drawFilledRect(rect.x + 10.0F, bannerY, rect.width - 20.0F, bannerH, banner);
+            uiRenderer.drawOutlineRect(rect.x + 10.0F, bannerY, rect.width - 20.0F, bannerH, bannerEdge, repaired ? 2.0F : 1.0F);
         };
 
-        const float forgeRuin[4] = {0.16F, 0.12F, 0.1F, 0.62F};
-        const float forgeOpen[4] = {0.55F, 0.24F, 0.08F, 0.38F};
-        const float chapelRuin[4] = {0.14F, 0.12F, 0.16F, 0.62F};
-        const float chapelOpen[4] = {0.72F, 0.62F, 0.32F, 0.34F};
-        const float tavernRuin[4] = {0.22F, 0.1F, 0.1F, 0.62F};
-        const float tavernOpen[4] = {0.48F, 0.14F, 0.18F, 0.4F};
-        paintBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith, forgeRuin, forgeOpen);
-        paintBuilding(layout.healer, systems::TownBuilding::Healer, chapelRuin, chapelOpen);
-        paintBuilding(layout.tavern, systems::TownBuilding::Tavern, tavernRuin, tavernOpen);
+        paintBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith, 0, 1);
+        paintBuilding(layout.healer, systems::TownBuilding::Healer, 2, 3);
+        paintBuilding(layout.tavern, systems::TownBuilding::Tavern, 4, 5);
 
-        const float roadFill[4] = {0.28F, 0.18F, 0.08F, 0.9F};
-        const float roadBorder[4] = {0.9F, 0.74F, 0.32F, 1.0F};
-        uiRenderer.drawFilledRect(layout.road.x, layout.road.y, layout.road.width, layout.road.height, roadFill);
+        if (townPlates_[6].isValid()) {
+            uiRenderer.drawTexturedRect(
+                townPlates_[6], layout.road.x, layout.road.y, layout.road.width, layout.road.height, white);
+        }
+        const float roadBorder[4] = {0.95F, 0.78F, 0.36F, 1.0F};
         uiRenderer.drawOutlineRect(layout.road.x, layout.road.y, layout.road.width, layout.road.height, roadBorder, 2.0F);
 
         if (tavernPanelOpen_ || healerPanelOpen_) {
@@ -3957,8 +3990,8 @@ struct GameApplication::Impl {
         const auto labelBuilding = [&](const ui::Rect& rect, const systems::TownBuilding building) {
             const systems::TownBuildingDefinition definition = systems::townBuildingDefinition(building);
             const bool repaired = townHub_.isRepaired(building);
-            const ui::Rect nameRect{rect.x + 8.0F, rect.y + rect.height * 0.38F, rect.width - 16.0F, 28.0F};
-            const ui::Rect subRect{rect.x + 8.0F, nameRect.y + 30.0F, rect.width - 16.0F, 48.0F};
+            const ui::Rect nameRect{rect.x + 12.0F, rect.y + rect.height * 0.72F, rect.width - 24.0F, 26.0F};
+            const ui::Rect subRect{rect.x + 12.0F, nameRect.y + 24.0F, rect.width - 24.0F, 28.0F};
             textRenderer.drawTextCentered(nameRect, repaired ? definition.name : definition.ruinedName, 1.7F, title);
             std::string detail = repaired ? definition.serviceHint : 
                 ("Repair  " + std::to_string(definition.repairGold) + "g  Lv " + std::to_string(definition.requiredLevel));
@@ -4318,13 +4351,15 @@ struct GameApplication::Impl {
         grantSouls(soulsAwarded);
         spawnSoulsNumber(targetPosition, soulsAwarded);
         runProgression_.onMobKill();
-        const int goldBounty = systems::combatGoldBounty(isBoss, isElite, runProgression_.depth());
+        const systems::CombatKillReward killReward =
+            systems::combatKillReward(isBoss, isElite, runProgression_.depth());
+        const int goldBounty = killReward.gold;
         zoneManager.player().addGold(goldBounty);
         tradeSystem.setPlayerGold(zoneManager.player().gold());
         spawnFloatingCombatText(
             targetPosition, "+" + std::to_string(goldBounty) + "g", 0.95F, 0.82F, 0.28F, 1.5F, 2.0F);
 
-        const int experienceAward = isBoss ? 36 : (isElite ? 14 : 8);
+        const int experienceAward = killReward.experience;
         const systems::ExperienceGrant experienceGrant =
             systems::grantCombatExperience(stats, experienceAward);
         if (experienceGrant.levelsGained > 0) {

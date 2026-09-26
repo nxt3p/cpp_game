@@ -9,11 +9,12 @@ namespace systems {
 namespace {
 
 // Base reel weights per source tier. Each row sums to 1.0 before coin/pity adjustments.
+// Boss jackpots are occasional (~16% before the unique slice). Elites are rarer. Trash mobs almost never jackpot.
 constexpr std::array<LootReelOdds, 4> kBaseOdds = {{
-    /* Minor    */ {0.84F, 0.135F, 0.022F, 0.003F},
-    /* Standard */ {0.58F, 0.30F, 0.10F, 0.02F},
-    /* Elite    */ {0.32F, 0.40F, 0.22F, 0.06F},
-    /* Boss     */ {0.10F, 0.34F, 0.40F, 0.16F},
+    /* Minor    */ {0.78F, 0.17F, 0.049F, 0.001F},
+    /* Standard */ {0.52F, 0.33F, 0.142F, 0.008F},
+    /* Elite    */ {0.30F, 0.42F, 0.252F, 0.028F},
+    /* Boss     */ {0.08F, 0.32F, 0.44F, 0.16F},
 }};
 
 constexpr float kCoinPoolSaturation = 150.0F;
@@ -302,13 +303,55 @@ LootPrize SlotMachineLoot::rollMediumPrize(const EntityTier tier) {
     return prize;
 }
 
+float SlotMachineLoot::jackpotUniqueSlice(const EntityTier tier) const noexcept {
+    if (lootCeiling_ != LootCeiling::Unique) {
+        return 0.0F;
+    }
+    return tier == EntityTier::Boss ? 0.12F : 0.06F;
+}
+
+float SlotMachineLoot::legendaryChance(const EntityTier tier) const noexcept {
+    return oddsFor(tier).jackpot * (1.0F - jackpotUniqueSlice(tier));
+}
+
+void SlotMachineLoot::setTavernPitySpins(const int drySpins) noexcept {
+    tavernDrySpins_ = std::max(0, drySpins);
+}
+
+TavernPrize tavernPrizeForRoll(const float roll, const TavernGambleOdds& odds) noexcept {
+    float cursor = 0.0F;
+    const auto hit = [&](const float chance) {
+        cursor += chance;
+        return roll < cursor;
+    };
+    if (hit(odds.mythical)) {
+        return TavernPrize::Mythical;
+    }
+    if (hit(odds.unique)) {
+        return TavernPrize::Unique;
+    }
+    if (hit(odds.legendary)) {
+        return TavernPrize::Legendary;
+    }
+    if (hit(odds.rare)) {
+        return TavernPrize::Rare;
+    }
+    if (hit(odds.magic)) {
+        return TavernPrize::Magic;
+    }
+    if (hit(odds.common)) {
+        return TavernPrize::Common;
+    }
+    if (hit(odds.gold)) {
+        return TavernPrize::Gold;
+    }
+    return TavernPrize::Nothing;
+}
+
 LootPrize SlotMachineLoot::rollJackpotPrize(const EntityTier tier) {
     LootPrize prize{};
     prize.tier = LootReelTier::Jackpot;
-    // Uniques are a thin slice of jackpots. Mythical gear is not on the combat reels.
-    const float uniqueChance =
-        lootCeiling_ == LootCeiling::Unique ? (tier == EntityTier::Boss ? 0.12F : 0.08F) : 0.0F;
-    if (unit() < uniqueChance) {
+    if (unit() < jackpotUniqueSlice(tier)) {
         prize.kind = LootPrizeKind::Unique;
         prize.item = makeUnique(tier);
     } else {
@@ -431,13 +474,13 @@ LootSpinResult SlotMachineLoot::spin(const EntityTier tier) {
 TavernGambleOdds SlotMachineLoot::tavernOdds() const noexcept {
     TavernGambleOdds odds{};
     odds.mythical = kTavernMythicalChance;
-    odds.unique = 0.0015F;
+    odds.unique = 0.002F;
     const float pityLegendary = std::min(0.02F, static_cast<float>(tavernDrySpins_) * 0.000002F);
-    odds.legendary = 0.004F + pityLegendary;
-    odds.rare = 0.018F;
-    odds.magic = 0.070F;
-    odds.common = 0.160F;
-    odds.gold = 0.4464F;
+    odds.legendary = 0.008F + pityLegendary;
+    odds.rare = 0.036F;
+    odds.magic = 0.090F;
+    odds.common = 0.180F;
+    odds.gold = 0.420F;
     odds.nothing = 1.0F - (odds.mythical + odds.unique + odds.legendary + odds.rare + odds.magic + odds.common + odds.gold);
     if (odds.nothing < 0.0F) {
         odds.gold = std::max(0.0F, odds.gold + odds.nothing);
@@ -458,12 +501,7 @@ TavernGambleResult SlotMachineLoot::gambleTavern(int& playerGold) {
     result.paid = true;
 
     const TavernGambleOdds odds = tavernOdds();
-    const float roll = unit();
-    float cursor = 0.0F;
-    auto hit = [&](const float chance) {
-        cursor += chance;
-        return roll < cursor;
-    };
+    const TavernPrize prize = tavernPrizeForRoll(unit(), odds);
 
     auto finishItem = [&](ItemMetadata item, const char* banner, const bool resetPity) {
         result.grantedItem = true;
@@ -477,7 +515,7 @@ TavernGambleResult SlotMachineLoot::gambleTavern(int& playerGold) {
         }
     };
 
-    if (hit(odds.mythical)) {
+    if (prize == TavernPrize::Mythical) {
         ItemMetadata item = makeUnique(EntityTier::Boss);
         item.rarity = ItemRarity::Mythical;
         item.name = std::string("Mythic ") + item.name;
@@ -487,26 +525,26 @@ TavernGambleResult SlotMachineLoot::gambleTavern(int& playerGold) {
         finishItem(std::move(item), "MYTHICAL! ", true);
         return result;
     }
-    if (hit(odds.unique)) {
+    if (prize == TavernPrize::Unique) {
         finishItem(makeUnique(EntityTier::Elite), "Unique! ", true);
         return result;
     }
-    if (hit(odds.legendary)) {
+    if (prize == TavernPrize::Legendary) {
         finishItem(makeLegendary(EntityTier::Elite), "Legendary! ", true);
         return result;
     }
-    if (hit(odds.rare)) {
+    if (prize == TavernPrize::Rare) {
         ItemMetadata item = makeSocketedGear(EntityTier::Standard);
         item.rarity = ItemRarity::Rare;
         item.name = std::string("Rare ") + item.name;
         finishItem(std::move(item), "", false);
         return result;
     }
-    if (hit(odds.magic)) {
+    if (prize == TavernPrize::Magic) {
         finishItem(makeSocketedGear(EntityTier::Minor), "", false);
         return result;
     }
-    if (hit(odds.common)) {
+    if (prize == TavernPrize::Common) {
         if (unit() < 0.5F) {
             finishItem(makeConsumable(), "", false);
         } else {
@@ -514,7 +552,7 @@ TavernGambleResult SlotMachineLoot::gambleTavern(int& playerGold) {
         }
         return result;
     }
-    if (hit(odds.gold)) {
+    if (prize == TavernPrize::Gold) {
         result.goldAwarded = rollInt(8, 20 + zoneDepth_ * 4);
         playerGold += result.goldAwarded;
         result.message = "+" + std::to_string(result.goldAwarded) + " gold";

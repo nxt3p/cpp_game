@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <fstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -109,7 +110,7 @@ TEST_CASE("Town repairs spend gold and unlock buildings in level order", "[town]
     CHECK(town.tryRepair(systems::TownBuilding::Healer, gold, 1) == systems::TownRepairResult::NeedLevel);
 
     CHECK(town.tryRepair(systems::TownBuilding::Blacksmith, gold, 1) == systems::TownRepairResult::Repaired);
-    CHECK(gold == 160);
+    CHECK(gold == 164);
     CHECK(town.isRepaired(systems::TownBuilding::Blacksmith));
     CHECK(town.tryRepair(systems::TownBuilding::Blacksmith, gold, 5) == systems::TownRepairResult::AlreadyOpen);
 
@@ -240,7 +241,52 @@ TEST_CASE("Procedural town backdrop paints distinct original color", "[town]") {
             ++dark;
         }
     }
-    CHECK(lit > 20);
-    CHECK(dark > 100);
+    CHECK(lit > 40);
+    CHECK(dark < lit);
+
+    const auto sample = [&](const int x, const int y) {
+        const std::size_t index =
+            (static_cast<std::size_t>(y) * static_cast<std::size_t>(image.width) + static_cast<std::size_t>(x)) * 4U;
+        return std::tuple{image.rgba[index], image.rgba[index + 1U], image.rgba[index + 2U]};
+    };
+    const auto [skyR, skyG, skyB] = sample(8, 4);
+    CHECK(skyB > skyR);
+    const auto [groundR, groundG, groundB] = sample(image.width / 2, image.height - 4);
+    CHECK(groundG + groundR > groundB);
+
+    const auto warmPixels = [](const render::TownPixelBuffer& plate) {
+        int warm = 0;
+        int visible = 0;
+        for (std::size_t index = 0; index + 3 < plate.rgba.size(); index += 4) {
+            if (plate.rgba[index + 3U] < 40) {
+                continue;
+            }
+            ++visible;
+            const int red = plate.rgba[index];
+            const int blue = plate.rgba[index + 2U];
+            if (red > 150 && red > blue + 30) {
+                ++warm;
+            }
+        }
+        return std::pair{warm, visible};
+    };
+    const render::TownPixelBuffer ruinedForge = render::paintTownPlate(render::TownPlateKind::Forge, false, 80, 110);
+    const render::TownPixelBuffer openForge = render::paintTownPlate(render::TownPlateKind::Forge, true, 80, 110);
+    const render::TownPixelBuffer ruinedChapel = render::paintTownPlate(render::TownPlateKind::Chapel, false, 80, 110);
+    const render::TownPixelBuffer openChapel = render::paintTownPlate(render::TownPlateKind::Chapel, true, 80, 110);
+    const auto [ruinedWarm, ruinedVisible] = warmPixels(ruinedForge);
+    const auto [openWarm, openVisible] = warmPixels(openForge);
+    CHECK(openVisible > 80);
+    CHECK(ruinedVisible > 40);
+    CHECK(openWarm > ruinedWarm);
+    CHECK(warmPixels(openChapel).first > warmPixels(ruinedChapel).first);
+    const render::TownPixelBuffer road = render::paintTownPlate(render::TownPlateKind::Road, true, 120, 36);
+    CHECK(warmPixels(road).second > 40);
     writeTownBmp(image, "/tmp/town_backdrop.bmp");
+    writeTownBmp(ruinedForge, "/tmp/town_forge_ruined.bmp");
+    writeTownBmp(openForge, "/tmp/town_forge_open.bmp");
+    writeTownBmp(ruinedChapel, "/tmp/town_chapel_ruined.bmp");
+    writeTownBmp(openChapel, "/tmp/town_chapel_open.bmp");
+    writeTownBmp(render::paintTownPlate(render::TownPlateKind::Tavern, false, 80, 110), "/tmp/town_tavern_ruined.bmp");
+    writeTownBmp(render::paintTownPlate(render::TownPlateKind::Tavern, true, 80, 110), "/tmp/town_tavern_open.bmp");
 }

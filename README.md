@@ -144,9 +144,9 @@ Buildings start in ruins. Click one to spend gold once your level is high enough
 
 | Building | Level | Gold | Unlocks |
 |----------|------:|-----:|---------|
-| Blacksmith | 1 | 40 | Sell gear and forge services |
-| Chapel | 2 | 70 | Rest (12 gold tithe restores health and mana) |
-| Tavern | 3 | 140 | Mystery gamble, 25 gold a spin |
+| Blacksmith | 1 | 36 | Sell gear and forge services |
+| Chapel | 2 | 64 | Rest (12 gold tithe restores health and mana) |
+| Tavern | 3 | 120 | Mystery gamble, 25 gold a spin |
 
 Kills pay gold and experience directly, so the first repairs come from fighting rather than from a pile of items. **The Road** (or **M**) opens the campaign map. Mythical items are reserved for the tavern reel at 1/10000.
 

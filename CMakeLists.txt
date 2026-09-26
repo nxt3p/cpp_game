@@ -221,6 +221,7 @@ if(ENGINE_BUILD_TESTS)
         tests/test_isometric_arpg.cpp
         tests/test_lane_battle.cpp
         tests/test_town_overhaul.cpp
+        tests/test_town_balance.cpp
     )
     engine_apply_warnings(EngineTests)
     engine_apply_debug_sanitizers(EngineTests)

@@ -7,9 +7,9 @@ namespace systems {
 namespace {
 
 constexpr TownBuildingDefinition kBuildings[] = {
-    {"Blacksmith", "Ruined Forge", "Sell gear and temper weapons", 40, 1},
-    {"Tavern", "Ruined Tavern", "Gamble gold for a mystery prize", 140, 3},
-    {"Healer", "Ruined Chapel", "Rest and restore health", 70, 2},
+    {"Blacksmith", "Ruined Forge", "Sell gear and temper weapons", 36, 1},
+    {"Tavern", "Ruined Tavern", "Gamble gold for a mystery prize", 120, 3},
+    {"Healer", "Ruined Chapel", "Rest and restore health", 64, 2},
 };
 
 constexpr int kHealerTitheGold = 12;
@@ -21,15 +21,24 @@ TownBuildingDefinition townBuildingDefinition(const TownBuilding building) noexc
     return kBuildings[index];
 }
 
-int combatGoldBounty(const bool boss, const bool elite, const int depth) noexcept {
+CombatKillReward combatKillReward(const bool boss, const bool elite, const int depth) noexcept {
     const int safeDepth = std::max(1, depth);
+    CombatKillReward reward{};
     if (boss) {
-        return 18 + safeDepth * 6;
+        reward.gold = 28 + safeDepth * 8;
+        reward.experience = 36;
+    } else if (elite) {
+        reward.gold = 14 + safeDepth * 3;
+        reward.experience = 14;
+    } else {
+        reward.gold = 6 + safeDepth;
+        reward.experience = 8;
     }
-    if (elite) {
-        return 8 + safeDepth * 2;
-    }
-    return 3 + safeDepth;
+    return reward;
+}
+
+int combatGoldBounty(const bool boss, const bool elite, const int depth) noexcept {
+    return combatKillReward(boss, elite, depth).gold;
 }
 
 int healerTitheGold() noexcept {
