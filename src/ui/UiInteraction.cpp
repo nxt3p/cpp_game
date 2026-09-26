@@ -98,6 +98,7 @@ void buildInGameHitRegions(
         registry.push(WidgetKind::StatUpgradeButton, character.upgradeStrengthButton, 0);
         registry.push(WidgetKind::StatUpgradeButton, character.upgradeDexterityButton, 1);
         registry.push(WidgetKind::StatUpgradeButton, character.upgradeVitalityButton, 2);
+        registry.push(WidgetKind::PanelClose, character.closeButton);
     }
 
     if (visibility.trading) {

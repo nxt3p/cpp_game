@@ -281,6 +281,35 @@ TEST_CASE("Town scene loads committed plates instead of a missing folder", "[tow
     }
 }
 
+TEST_CASE("Town building anchors keep the same fraction when the window grows", "[town][ui]") {
+    const ui::UiScale hd(1280, 720, ui::UiPlatformKind::Desktop);
+    const ui::UiScale fhd(1920, 1080, ui::UiPlatformKind::Desktop);
+    const ui::TownSceneLayout a = ui::computeTownSceneLayout(hd);
+    const ui::TownSceneLayout b = ui::computeTownSceneLayout(fhd);
+    const ui::Rect stageA = ui::townStageRect(hd);
+    const ui::Rect stageB = ui::townStageRect(fhd);
+    const auto fracX = [](const ui::Rect& box, const ui::Rect& stage) {
+        return (box.x - stage.x) / stage.width;
+    };
+    const auto fracY = [](const ui::Rect& box, const ui::Rect& stage) {
+        return (box.y - stage.y) / stage.height;
+    };
+    CHECK(fracX(a.blacksmith, stageA) == Catch::Approx(fracX(b.blacksmith, stageB)).margin(0.002F));
+    CHECK(fracY(a.blacksmith, stageA) == Catch::Approx(fracY(b.blacksmith, stageB)).margin(0.002F));
+    CHECK(a.blacksmith.width / stageA.width == Catch::Approx(b.blacksmith.width / stageB.width).margin(0.002F));
+    CHECK(a.healer.height / stageA.height == Catch::Approx(b.healer.height / stageB.height).margin(0.002F));
+    CHECK(fracX(a.tavern, stageA) == Catch::Approx(fracX(b.tavern, stageB)).margin(0.002F));
+    CHECK(fracX(a.road, stageA) == Catch::Approx(fracX(b.road, stageB)).margin(0.002F));
+    CHECK(stageA.width == Catch::Approx(1280.0F));
+    CHECK(stageB.height == Catch::Approx(1080.0F));
+
+    const ui::UiScale phone(390, 844, ui::UiPlatformKind::Mobile);
+    const ui::Rect phoneStage = ui::townStageRect(phone);
+    CHECK(std::abs((phoneStage.width / phoneStage.height) - (16.0F / 9.0F)) < 0.02F);
+    CHECK(phoneStage.width <= 390.0F + 0.5F);
+    CHECK(phoneStage.height < 844.0F);
+}
+
 TEST_CASE("Town captions sit under the building art", "[town][ui]") {
     const ui::UiScale desktop(1280, 720, ui::UiPlatformKind::Desktop);
     const ui::TownSceneLayout town = ui::computeTownSceneLayout(desktop);

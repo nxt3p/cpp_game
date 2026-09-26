@@ -135,7 +135,8 @@ inline void simplifyClosed(std::vector<float>& points, const float epsilon) {
     const std::uint8_t* pixels,
     const int width,
     const int height,
-    const float simplifyEpsilon = kTownContourSimplify) {
+    const float simplifyEpsilon = kTownContourSimplify,
+    const bool downsample = true) {
     TownSilhouette result;
     result.width = std::max(0, width);
     result.height = std::max(0, height);
@@ -152,6 +153,44 @@ inline void simplifyClosed(std::vector<float>& points, const float epsilon) {
         if (alpha >= kTownOpaqueAlpha) {
             opaque[static_cast<std::size_t>(index)] = 1;
         }
+    }
+
+    // Trace a max-pooled mask when the plate is large. Full-resolution alpha stays
+    // for hit tests. Step 2 on a 1024px edge keeps the roof peak within a texel of
+    // the true tip, which the silhouette tests require.
+    if (downsample && (width > 512 || height > 512)) {
+        const int step = std::max((width + 511) / 512, (height + 511) / 512);
+        const int smallWidth = (width + step - 1) / step;
+        const int smallHeight = (height + step - 1) / step;
+        std::vector<std::uint8_t> small(
+            static_cast<std::size_t>(smallWidth) * static_cast<std::size_t>(smallHeight) * 4U, 0);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const auto alpha =
+                    pixels[(static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x)) * 4U + 3U];
+                if (alpha < kTownOpaqueAlpha) {
+                    continue;
+                }
+                const int sx = x / step;
+                const int sy = y / step;
+                std::uint8_t& pooled = small[(static_cast<std::size_t>(sy) * static_cast<std::size_t>(smallWidth) +
+                                               static_cast<std::size_t>(sx)) *
+                                              4U +
+                                          3U];
+                if (alpha > pooled) {
+                    pooled = alpha;
+                }
+            }
+        }
+        const float coarseEpsilon = std::max(1.25F, simplifyEpsilon / static_cast<float>(step));
+        TownSilhouette coarse = buildTownSilhouette(small.data(), smallWidth, smallHeight, coarseEpsilon, false);
+        for (float& coord : coarse.contour) {
+            coord *= static_cast<float>(step);
+        }
+        coarse.alpha = std::move(result.alpha);
+        coarse.width = width;
+        coarse.height = height;
+        return coarse;
     }
 
     std::vector<int> labels(static_cast<std::size_t>(count), -1);

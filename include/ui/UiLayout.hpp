@@ -62,7 +62,10 @@ struct InventoryPaperDollLayout {
 struct CharacterPanelLayout {
     Rect panel{};
     Rect titleBand{};
+    Rect closeButton{};
     Rect portrait{};
+    Rect hpLabel{};
+    Rect soulLabel{};
     Rect xpBar{};
     Rect hpBar{};
     Rect goldLabel{};
@@ -148,6 +151,10 @@ struct TownSceneLayout {
 };
 
 [[nodiscard]] TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept;
+
+/// 16:9 stage the plaza backdrop and building anchors share. Full window when the
+/// framebuffer is already 16:9; otherwise the largest 16:9 letterbox.
+[[nodiscard]] Rect townStageRect(const UiScale& scale) noexcept;
 
 [[nodiscard]] Rect townBuildingRect(const TownSceneLayout& layout, int buildingIndex) noexcept;
 

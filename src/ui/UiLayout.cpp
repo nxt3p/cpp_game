@@ -3,6 +3,7 @@
 #include "ui/HudConsoleLayout.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace ui {
 
@@ -280,6 +281,14 @@ CharacterPanelLayout computeCharacterPanelLayout(const UiScale& scale) noexcept 
         layout.panel.y + scale.dim(8.0F),
         panelW - pad * 2.0F,
         scale.dim(28.0F)};
+    const float closeW = std::min(scale.dim(78.0F), layout.titleBand.width * 0.28F);
+    const float closeH = std::min(scale.dim(22.0F), layout.titleBand.height);
+    layout.closeButton = {
+        layout.titleBand.x + layout.titleBand.width - closeW,
+        layout.titleBand.y + (layout.titleBand.height - closeH) * 0.5F,
+        closeW,
+        closeH};
+    layout.titleBand.width = std::max(scale.dim(40.0F), layout.closeButton.x - scale.dim(8.0F) - layout.titleBand.x);
 
     const float headerBottom = layout.titleBand.y + layout.titleBand.height + scale.dim(8.0F);
     const float leftWidth = panelW * 0.46F;
@@ -290,14 +299,22 @@ CharacterPanelLayout computeCharacterPanelLayout(const UiScale& scale) noexcept 
         portraitSize,
         portraitSize};
 
-    const float barHeight = scale.dim(12.0F);
-    const float barWidth = std::max(scale.dim(80.0F), leftWidth - scale.dim(16.0F));
-    float cursorY = layout.portrait.y + portraitSize + scale.dim(8.0F);
-    layout.hpBar = {layout.panel.x + pad, cursorY, barWidth, barHeight};
+    const float labelH = scale.dim(16.0F);
+    const float barHeight = scale.dim(10.0F);
+    const float barX = layout.portrait.x + portraitSize + scale.dim(10.0F);
+    const float barRight = layout.panel.x + pad + leftWidth - scale.dim(8.0F);
+    const float barWidth = std::max(scale.dim(48.0F), barRight - barX);
+    float cursorY = layout.portrait.y;
+    layout.hpLabel = {barX, cursorY, barWidth, labelH};
+    cursorY += labelH;
+    layout.hpBar = {barX, cursorY, barWidth, barHeight};
+    cursorY += barHeight + scale.dim(4.0F);
+    layout.soulLabel = {barX, cursorY, barWidth, labelH};
+    cursorY += labelH;
+    layout.xpBar = {barX, cursorY, barWidth, barHeight};
     cursorY += barHeight + scale.dim(6.0F);
-    layout.xpBar = {layout.panel.x + pad, cursorY, barWidth, barHeight};
-    cursorY += barHeight + scale.dim(6.0F);
-    layout.goldLabel = {layout.panel.x + pad, cursorY, barWidth, scale.dim(16.0F)};
+    const float goldY = std::max(cursorY, layout.portrait.y + portraitSize + scale.dim(6.0F));
+    layout.goldLabel = {layout.panel.x + pad, goldY, std::max(scale.dim(40.0F), leftWidth - scale.dim(8.0F)), scale.dim(16.0F)};
 
     const float footerHeight = scale.dim(20.0F);
     layout.footerHint = {
@@ -354,6 +371,7 @@ AbilityBoardLayout computeAbilityBoardLayout(
     const float pad = scale.dim(10.0F);
     const float headerH = scale.dim(16.0F);
     const float gap = scale.dim(8.0F);
+    const float nameH = scale.dim(14.0F);
     const float sectionGap = scale.dim(12.0F);
     const float left = panel.spellsPane.x + pad;
     const float width = std::max(scale.dim(40.0F), panel.spellsPane.width - pad * 2.0F);
@@ -361,7 +379,7 @@ AbilityBoardLayout computeAbilityBoardLayout(
                     scale.dim(10.0F);
     const float bottom = panel.spellsPane.y + panel.spellsPane.height - scale.dim(6.0F);
     const float available = std::max(scale.dim(48.0F), bottom - cursorY);
-    const float chrome = headerH * 3.0F + sectionGap * 3.0F + gap;
+    const float chrome = headerH * 3.0F + sectionGap * 3.0F + gap + nameH * 3.0F;
     float icon = scale.dim(40.0F);
     const float needed = chrome + icon * 3.0F;
     if (needed > available) {
@@ -372,14 +390,16 @@ AbilityBoardLayout computeAbilityBoardLayout(
         section.header = {left, cursorY, width, headerH};
         cursorY += headerH + scale.dim(4.0F);
         section.iconCount = count;
+        const float slotW = width / static_cast<float>(std::max(count, 1));
         for (int index = 0; index < count; ++index) {
+            const float slotX = left + static_cast<float>(index) * slotW;
             section.icons[static_cast<std::size_t>(index)] = {
-                left + static_cast<float>(index) * (icon + gap),
+                slotX + std::max(0.0F, (slotW - icon) * 0.5F),
                 cursorY,
-                icon,
+                std::min(icon, slotW),
                 icon};
         }
-        cursorY += icon + sectionGap;
+        cursorY += icon + nameH + sectionGap;
     };
 
     place(board.basic, 3);
@@ -802,107 +822,56 @@ HudChromeLayout computeHudChromeLayout(const UiScale& scale) noexcept {
     return layout;
 }
 
+Rect townStageRect(const UiScale& scale) noexcept {
+    const float width = static_cast<float>(std::max(scale.width, 1));
+    const float height = static_cast<float>(std::max(scale.height, 1));
+    const float aspect = width / std::max(height, 1.0F);
+    constexpr float kTarget = 16.0F / 9.0F;
+    if (std::abs(aspect - kTarget) <= 0.02F) {
+        return {0.0F, 0.0F, width, height};
+    }
+    float stageW = width;
+    float stageH = width / kTarget;
+    if (stageH > height) {
+        stageH = height;
+        stageW = height * kTarget;
+    }
+    return {(width - stageW) * 0.5F, (height - stageH) * 0.5F, stageW, stageH};
+}
+
 TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept {
     TownSceneLayout layout{};
     const float width = static_cast<float>(std::max(scale.width, 1));
     const float height = static_cast<float>(std::max(scale.height, 1));
     const float margin = std::max(8.0F, width * 0.018F);
-    const float consoleBand = std::min(scale.dim(kReferenceHudConsoleHeight), height * 0.34F);
-    const float consoleTop = height - consoleBand;
     const float noticeH = std::clamp(std::max(40.0F, scale.minTouchTarget()), 40.0F, 56.0F);
     layout.notice = {margin, 4.0F, std::max(1.0F, width - margin * 2.0F), noticeH};
     const float exitW = std::min(148.0F, std::max(108.0F, scale.minTouchTarget() * 2.6F));
     layout.exitButton = {width - margin - exitW, layout.notice.y, exitW, noticeH};
 
-    const float playTop = layout.notice.y + layout.notice.height + 12.0F;
-    const float playBottom = std::max(playTop + 48.0F, consoleTop - 10.0F);
-    const float playH = std::max(48.0F, playBottom - playTop);
-
-    const float ctaW = std::clamp(width * 0.15F, std::max(112.0F, scale.minTouchTarget() * 2.3F), 188.0F);
-    const float ctaH = std::clamp(playH * 0.46F, std::max(128.0F, ctaW * 0.9F), std::min(250.0F, playH * 0.72F));
-    layout.road = {
-        width - margin - ctaW,
-        playTop + std::max(0.0F, (playH - ctaH) * 0.38F),
-        ctaW,
-        ctaH};
-    if (layout.road.y + layout.road.height > playBottom) {
-        layout.road.y = std::max(playTop, playBottom - layout.road.height);
-    }
-
-    const float left = margin;
-    const float rightLimit = layout.road.x - 14.0F;
-    const float innerW = std::max(48.0F, rightLimit - left);
-    const bool wide = width >= 960.0F;
-    if (wide) {
-        const float forgeW = std::min(320.0F, innerW * 0.32F);
-        const float forgeH = std::min(playH * 0.58F, 390.0F);
-        layout.blacksmith = {left, playTop + playH * 0.34F, forgeW, forgeH};
-
-        const float chapelW = std::min(280.0F, innerW * 0.28F);
-        const float chapelH = std::min(playH * 0.52F, 360.0F);
-        layout.healer = {left + (innerW - chapelW) * 0.48F, playTop + playH * 0.02F, chapelW, chapelH};
-
-        const float tavernW = std::min(280.0F, innerW * 0.28F);
-        const float tavernH = std::min(playH * 0.52F, 350.0F);
-        layout.tavern = {rightLimit - tavernW, playTop + playH * 0.28F, tavernW, tavernH};
-    } else {
-        const float chapelW = std::min(innerW * 0.72F, 260.0F);
-        const float chapelH = std::min(playH * 0.34F, 240.0F);
-        layout.healer = {left + std::max(0.0F, (innerW - chapelW) * 0.5F), playTop, chapelW, chapelH};
-        const float rowY = layout.healer.y + layout.healer.height + 12.0F;
-        const float rowH = std::max(64.0F, std::min(playH * 0.38F, playBottom - rowY));
-        const float colGap = 10.0F;
-        const float colW = std::max(44.0F, (innerW - colGap) * 0.5F);
-        layout.blacksmith = {left, rowY, colW, rowH};
-        layout.tavern = {left + colW + colGap, rowY, std::max(44.0F, std::min(colW, rightLimit - (left + colGap + colW))), rowH};
-    }
-
-    const auto clampPlay = [&](Rect& box) {
-        if (box.x < left) {
-            box.x = left;
-        }
-        if (box.x + box.width > rightLimit) {
-            box.width = std::max(36.0F, rightLimit - box.x);
-        }
-        if (box.y < playTop) {
-            box.y = playTop;
-        }
-        if (box.y + box.height > playBottom) {
-            box.y = std::max(playTop, playBottom - box.height);
-            if (box.y + box.height > playBottom) {
-                box.height = std::max(32.0F, playBottom - box.y);
-            }
-        }
+    // Anchors measured from the 1280x720 plaza so pads, sprites, and resize stay locked.
+    struct Anchor {
+        float x;
+        float y;
+        float w;
+        float h;
     };
-    clampPlay(layout.blacksmith);
-    clampPlay(layout.healer);
-    clampPlay(layout.tavern);
-
-    const auto nudge = [&](Rect& mover, const Rect& anchor) {
-        if (!rectsOverlap(mover, anchor)) {
-            return;
-        }
-        const float overlapX =
-            std::min(mover.x + mover.width, anchor.x + anchor.width) - std::max(mover.x, anchor.x);
-        const float overlapY =
-            std::min(mover.y + mover.height, anchor.y + anchor.height) - std::max(mover.y, anchor.y);
-        if (overlapX < overlapY) {
-            if (mover.x + mover.width * 0.5F >= anchor.x + anchor.width * 0.5F) {
-                mover.x += overlapX + 8.0F;
-            } else {
-                mover.x -= overlapX + 8.0F;
-            }
-        } else if (mover.y >= anchor.y) {
-            mover.y += overlapY + 8.0F;
-        } else {
-            mover.y -= overlapY + 8.0F;
-        }
-        clampPlay(mover);
+    constexpr Anchor kForge{0.018F, 0.334F, 0.250F, 0.436F};
+    constexpr Anchor kChapel{0.300F, 0.093F, 0.219F, 0.392F};
+    constexpr Anchor kTavern{0.605F, 0.289F, 0.219F, 0.392F};
+    constexpr Anchor kRoad{0.835F, 0.232F, 0.147F, 0.346F};
+    const Rect stage = townStageRect(scale);
+    const auto place = [&](const Anchor& anchor) {
+        return Rect{
+            stage.x + anchor.x * stage.width,
+            stage.y + anchor.y * stage.height,
+            anchor.w * stage.width,
+            anchor.h * stage.height};
     };
-    nudge(layout.healer, layout.blacksmith);
-    nudge(layout.tavern, layout.healer);
-    nudge(layout.tavern, layout.blacksmith);
-    nudge(layout.blacksmith, layout.healer);
+    layout.blacksmith = place(kForge);
+    layout.healer = place(kChapel);
+    layout.tavern = place(kTavern);
+    layout.road = place(kRoad);
 
     const float panelW = std::min(460.0F, std::max(160.0F, width - margin * 2.0F));
     const float panelH = std::min(260.0F, std::max(140.0F, height * 0.4F));
@@ -941,11 +910,8 @@ TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept {
 }
 
 Rect townBuildingArtRect(const Rect& hotspot) noexcept {
-    float captionH = std::clamp(hotspot.height * 0.2F, 54.0F, 72.0F);
     const float cap = hotspot.height * 0.42F;
-    if (captionH > cap) {
-        captionH = cap;
-    }
+    const float captionH = std::min(hotspot.height * 0.2F, cap);
     return {hotspot.x, hotspot.y, hotspot.width, std::max(1.0F, hotspot.height - captionH - 8.0F)};
 }
 

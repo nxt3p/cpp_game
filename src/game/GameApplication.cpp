@@ -9,6 +9,7 @@
 #include "game/CombatSystem.hpp"
 #include "game/EntityPicker.hpp"
 #include "game/GameDebug.hpp"
+#include "game/PointerEdge.hpp"
 #include "game/GameSettings.hpp"
 #include "systems/CharacterCombat.hpp"
 #include "gameplay/GameStateManager.hpp"
@@ -439,10 +440,14 @@ struct GameApplication::Impl {
     render::Texture townAdventure_;
     TownSpriteFrame townAdventureFrame_{};
     bool townBackdropReady_{false};
+    int townLoadCursor_{-1};
+    double townLoadStartedAt_{0.0};
     bool hoveredExit_{false};
     std::unordered_set<std::uint32_t> laneMobIds_{};
     std::unordered_set<std::uint32_t> eliteIds_{};
+    std::vector<std::uint32_t> lanePropIds_{};
     render::Texture groundShadow_{};
+    render::Texture roadTexture_{};
     render::Texture menuBackdrop_{};
     enum class PointerCursor : std::uint8_t { Default = 0, Enemy, Loot, Slot, Count };
     GLFWcursor* pointerCursors_[static_cast<int>(PointerCursor::Count)]{};
@@ -3421,6 +3426,7 @@ struct GameApplication::Impl {
         }
         laneMobIds_.clear();
         eliteIds_.clear();
+        lanePropIds_.clear();
         combatSystem.reset();
         invalidateSceneryCaches();
     }
@@ -3447,6 +3453,66 @@ struct GameApplication::Impl {
         }
         hudMessage = std::string(lane_.node().name) + " — the hero runs right. Packs march in from the right.";
         logInfo(hudMessage);
+        maintainLaneDressing();
+    }
+
+    void maintainLaneDressing() {
+        if (!laneActive_) {
+            return;
+        }
+        const float behind = playerPosition.x - 22.0F;
+        std::vector<std::uint32_t> keep;
+        keep.reserve(lanePropIds_.size());
+        bool changed = false;
+        for (const std::uint32_t id : lanePropIds_) {
+            const gameplay::WorldEntitySnapshot* entity = findEntityById(id);
+            if (entity == nullptr || !entity->active || entity->position.x < behind) {
+                if (entity != nullptr && entity->active) {
+                    static_cast<void>(zoneManager.deactivateEntity(id));
+                }
+                changed = true;
+                continue;
+            }
+            keep.push_back(id);
+        }
+        lanePropIds_.swap(keep);
+
+        float furthest = playerPosition.x - 8.0F;
+        for (const std::uint32_t id : lanePropIds_) {
+            const gameplay::WorldEntitySnapshot* entity = findEntityById(id);
+            if (entity != nullptr && entity->active) {
+                furthest = std::max(furthest, entity->position.x);
+            }
+        }
+        const float target = playerPosition.x + 46.0F;
+        int step = static_cast<int>(lanePropIds_.size());
+        while (furthest < target && lanePropIds_.size() < 96U) {
+            furthest += 4.2F;
+            const float treeZ = kLaneCenterZ - (step % 2 == 0 ? 5.2F : 4.5F);
+            const std::uint32_t tree = zoneManager.spawnEntity(
+                gameplay::EntityKind::ENV_TREE, furthest, treeZ, static_cast<std::uint8_t>(step % 3));
+            lanePropIds_.push_back(tree);
+            changed = true;
+            const gameplay::EntityKind sideKind =
+                (step % 3 == 1) ? gameplay::EntityKind::ENV_BUSH : gameplay::EntityKind::ENV_ROCK;
+            const float sideZ = kLaneCenterZ + (step % 2 == 0 ? 5.0F : 4.3F);
+            const std::uint32_t side = zoneManager.spawnEntity(
+                sideKind, furthest + 1.2F, sideZ, static_cast<std::uint8_t>((step + 1) % 4));
+            lanePropIds_.push_back(side);
+            if (step % 2 == 0) {
+                const float shoulderZ = kLaneCenterZ + (step % 4 == 0 ? 2.15F : -2.15F);
+                const std::uint32_t shoulder = zoneManager.spawnEntity(
+                    gameplay::EntityKind::ENV_ROCK,
+                    furthest + 0.35F,
+                    shoulderZ,
+                    static_cast<std::uint8_t>((step + 2) % 4));
+                lanePropIds_.push_back(shoulder);
+            }
+            ++step;
+        }
+        if (changed) {
+            invalidateSceneryCaches();
+        }
     }
 
     void endLane() {
@@ -3590,6 +3656,7 @@ struct GameApplication::Impl {
             moveTarget.x -= shift;
             zoneManager.shiftSceneryX(-shift);
         }
+        maintainLaneDressing();
         zoneManager.updatePlayerPosition(toVec3(playerPosition));
         playerPosition = toGlm(zoneManager.player().position());
         playerPosition.z = kLaneCenterZ;
@@ -3820,24 +3887,25 @@ struct GameApplication::Impl {
         return frame;
     }
 
-    [[nodiscard]] bool loadTownTextures() {
-        const std::string dir = joinPath(assetsRoot, "textures/town");
-        if (!townBackdrop_.loadFromFile(dir + "/backdrop.png", true)) {
-            return false;
+    void finishTownProceduralFallback() {
+        clearTownArt();
+        const render::TownPixelBuffer image = render::paintTownBackdrop(480, 270);
+        const std::vector<std::uint8_t> upright = flipTownImage(image);
+        townBackdropReady_ = townBackdrop_.uploadRgba(image.width, image.height, upright.data(), true);
+        uploadTownPlate(0, static_cast<int>(render::TownArtStage::Ruined), render::TownPlateKind::Forge, false);
+        uploadTownPlate(0, static_cast<int>(render::TownArtStage::Restored), render::TownPlateKind::Forge, true);
+        uploadTownPlate(1, static_cast<int>(render::TownArtStage::Ruined), render::TownPlateKind::Tavern, false);
+        uploadTownPlate(1, static_cast<int>(render::TownArtStage::Restored), render::TownPlateKind::Tavern, true);
+        uploadTownPlate(2, static_cast<int>(render::TownArtStage::Ruined), render::TownPlateKind::Chapel, false);
+        uploadTownPlate(2, static_cast<int>(render::TownArtStage::Restored), render::TownPlateKind::Chapel, true);
+        if (!townBackdropReady_) {
+            townBackdropReady_ = true;
         }
-        for (int building = 0; building < render::kTownArtBuildingCount; ++building) {
-            for (int stage = 0; stage < render::kTownArtStageCount; ++stage) {
-                TownArtLayer& layer = townLayers_[static_cast<std::size_t>(building)][static_cast<std::size_t>(stage)];
-                const std::string path = dir + "/" + render::townStageFile(building, stage);
-                if (!loadTownLayerFile(layer, path)) {
-                    layer = TownArtLayer{};
-                    if (render::townStageRequired(stage)) {
-                        return false;
-                    }
-                }
-            }
-        }
-        const std::string adventurePath = dir + "/adventure.png";
+        townLoadCursor_ = 1000;
+        logInfo("Town art files missing; using the painted fallback.");
+    }
+
+    void loadTownAdventureFile(const std::string& adventurePath) {
         int adventureWidth = 0;
         int adventureHeight = 0;
         int adventureChannels = 0;
@@ -3856,29 +3924,45 @@ struct GameApplication::Impl {
             townAdventure_ = render::Texture{};
             townAdventureFrame_ = {};
         }
-        return true;
     }
 
+    /// One town file per frame so the first plaza enter does not decode every plate at once.
     void ensureTownBackdrop() {
         if (townBackdropReady_) {
             return;
         }
-        if (loadTownTextures()) {
-            townBackdropReady_ = true;
-            logInfo("Town art loaded from textures/town.");
+        if (townLoadCursor_ < 0) {
+            townLoadStartedAt_ = glfwGetTime();
+            townLoadCursor_ = 0;
+        }
+        const std::string dir = joinPath(assetsRoot, "textures/town");
+        const int layerJobs = render::kTownArtBuildingCount * render::kTownArtStageCount;
+        const int job = townLoadCursor_;
+        ++townLoadCursor_;
+        if (job == 0) {
+            if (!townBackdrop_.loadFromFile(dir + "/backdrop.png", true)) {
+                finishTownProceduralFallback();
+            }
             return;
         }
-        clearTownArt();
-        const render::TownPixelBuffer image = render::paintTownBackdrop(480, 270);
-        const std::vector<std::uint8_t> upright = flipTownImage(image);
-        townBackdropReady_ = townBackdrop_.uploadRgba(image.width, image.height, upright.data(), true);
-        uploadTownPlate(0, static_cast<int>(render::TownArtStage::Ruined), render::TownPlateKind::Forge, false);
-        uploadTownPlate(0, static_cast<int>(render::TownArtStage::Restored), render::TownPlateKind::Forge, true);
-        uploadTownPlate(1, static_cast<int>(render::TownArtStage::Ruined), render::TownPlateKind::Tavern, false);
-        uploadTownPlate(1, static_cast<int>(render::TownArtStage::Restored), render::TownPlateKind::Tavern, true);
-        uploadTownPlate(2, static_cast<int>(render::TownArtStage::Ruined), render::TownPlateKind::Chapel, false);
-        uploadTownPlate(2, static_cast<int>(render::TownArtStage::Restored), render::TownPlateKind::Chapel, true);
-        logInfo("Town art files missing; using the painted fallback.");
+        if (job <= layerJobs) {
+            const int index = job - 1;
+            const int building = index / render::kTownArtStageCount;
+            const int stage = index % render::kTownArtStageCount;
+            TownArtLayer& layer = townLayers_[static_cast<std::size_t>(building)][static_cast<std::size_t>(stage)];
+            const std::string path = dir + "/" + render::townStageFile(building, stage);
+            if (!loadTownLayerFile(layer, path)) {
+                layer = TownArtLayer{};
+                if (render::townStageRequired(stage)) {
+                    finishTownProceduralFallback();
+                }
+            }
+            return;
+        }
+        loadTownAdventureFile(dir + "/adventure.png");
+        townBackdropReady_ = true;
+        const int elapsedMs = static_cast<int>((glfwGetTime() - townLoadStartedAt_) * 1000.0);
+        logInfo("Town art loaded in " + std::to_string(elapsedMs) + " ms.");
     }
 
     void spinTavern() {
@@ -4248,15 +4332,26 @@ struct GameApplication::Impl {
         ensureTownBackdrop();
         const float width = static_cast<float>(window.width());
         const float height = static_cast<float>(window.height());
+        const ui::UiScale scale = currentUiScale();
+        const ui::Rect stage = ui::townStageRect(scale);
+        const float letterbox[4] = {0.02F, 0.015F, 0.018F, 1.0F};
+        if (stage.x > 0.5F || stage.y > 0.5F || stage.width + 1.0F < width || stage.height + 1.0F < height) {
+            uiRenderer.drawFilledRect(0.0F, 0.0F, width, height, letterbox);
+        }
         if (townBackdrop_.isValid()) {
             const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-            uiRenderer.drawTexturedRect(townBackdrop_, 0.0F, 0.0F, width, height, white);
+            uiRenderer.drawTexturedRect(townBackdrop_, stage.x, stage.y, stage.width, stage.height, white);
         } else {
             const float sky[4] = {0.07F, 0.06F, 0.1F, 1.0F};
-            uiRenderer.drawFilledRect(0.0F, 0.0F, width, height, sky);
+            uiRenderer.drawFilledRect(stage.x, stage.y, stage.width, stage.height, sky);
+        }
+        if (!townBackdropReady_) {
+            const ui::Rect plaque{width * 0.5F - 170.0F, height * 0.5F - 28.0F, 340.0F, 56.0F};
+            drawRpgPanel(plaque);
+            return;
         }
 
-        const ui::TownSceneLayout layout = ui::computeTownSceneLayout(currentUiScale());
+        const ui::TownSceneLayout layout = ui::computeTownSceneLayout(scale);
         if (!nodeMapOpen_) {
             ui::Rect notice = layout.notice;
             if (buildingUiOpen()) {
@@ -4280,6 +4375,17 @@ struct GameApplication::Impl {
                     glow,
                     22);
             }
+            const float contact[4] = {0.02F, 0.012F, 0.008F, 0.55F};
+            const float footY = sprite.y + sprite.height - std::max(3.0F, sprite.height * 0.02F);
+            const float shadowW = std::max(12.0F, sprite.width * 0.72F);
+            const float shadowH = std::max(6.0F, sprite.height * 0.07F);
+            uiRenderer.drawFilledRect(
+                sprite.x + (sprite.width - shadowW) * 0.5F,
+                footY - shadowH * 0.35F,
+                shadowW,
+                shadowH,
+                contact);
+            uiRenderer.drawFilledCircle(sprite.x + sprite.width * 0.5F, footY, shadowH * 0.85F, contact, 16);
             if (layer.color.isValid()) {
                 uiRenderer.drawTexturedRectUV(
                     layer.color,
@@ -4349,6 +4455,14 @@ struct GameApplication::Impl {
 
     void renderTownSceneText() const {
         if (laneActive_ || zoneManager.allowsFreeMovement() || nodeMapOpen_) {
+            return;
+        }
+        if (!townBackdropReady_) {
+            const float width = static_cast<float>(window.width());
+            const float height = static_cast<float>(window.height());
+            const ui::Rect plaque{width * 0.5F - 170.0F, height * 0.5F - 28.0F, 340.0F, 56.0F};
+            const float title[4] = {1.0F, 0.92F, 0.7F, 1.0F};
+            drawReadableCentered(plaque, "Opening the plaza...", 1.8F, title);
             return;
         }
 
@@ -5236,16 +5350,15 @@ struct GameApplication::Impl {
         float mouseY = 0.0F;
         readMousePosition(mouseX, mouseY);
         const bool syntheticClick = pendingSyntheticClick_;
-        const bool buttonDown = syntheticClick ||
+        const bool physicalDown =
             glfwGetMouseButton(window.handle(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-        const bool pressed = syntheticClick || (buttonDown && !mouseWasDown);
-        const bool released = syntheticClick || (!buttonDown && mouseWasDown);
         if (syntheticClick) {
             pendingSyntheticClick_ = false;
-            mouseWasDown = false;
-        } else {
-            mouseWasDown = buttonDown;
         }
+        const PointerEdgeState edge = advancePointerEdge(syntheticClick, physicalDown, mouseWasDown);
+        const bool pressed = edge.pressed;
+        const bool released = edge.released;
+        mouseWasDown = edge.mouseWasDown;
 
         if (pressed && isMouseOverInGameUi(mouseX, mouseY)) {
             const ui::HitRegion* menuRegion = uiInteraction_.hitTest(mouseX, mouseY);
@@ -5255,7 +5368,12 @@ struct GameApplication::Impl {
                 handleEquipmentUiClick(mouseX, mouseY);
             } else {
                 const ui::HitRegion* region = menuRegion;
-                if (region != nullptr && region->kind == ui::WidgetKind::StatUpgradeButton) {
+                if (region != nullptr && region->kind == ui::WidgetKind::PanelClose) {
+                    if (stateManager.currentState() == gameplay::GameState::CHARACTER_MENU) {
+                        stateManager.closeCharacterMenu();
+                    }
+                    overlayState.showCharacterScreen(false);
+                } else if (region != nullptr && region->kind == ui::WidgetKind::StatUpgradeButton) {
                     handleEquipmentUiClick(mouseX, mouseY);
                 } else if (region != nullptr && region->kind == ui::WidgetKind::InventorySlot &&
                            playerInventory.isSlotOccupied(region->slotIndex)) {
@@ -6327,6 +6445,67 @@ struct GameApplication::Impl {
         return toVec3(focus);
     }
 
+    void ensureRoadTexture() {
+        if (roadTexture_.isValid()) {
+            return;
+        }
+        constexpr int kSize = 64;
+        std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kSize * kSize * 4), 255);
+        for (int y = 0; y < kSize; ++y) {
+            for (int x = 0; x < kSize; ++x) {
+                const int cell = 9;
+                const int localX = x % cell;
+                const int localY = y % cell;
+                const int cellX = x / cell;
+                const int cellY = y / cell;
+                const int hash = (cellX * 17 + cellY * 31 + (cellX * cellY)) & 255;
+                const bool mortar = localX == 0 || localY == 0 || (hash % 5 == 0 && (localX > cell - 2 || localY > cell - 2));
+                const int grit = ((x * 13 + y * 7 + hash) & 15) - 8;
+                int red = mortar ? 78 : 118 + (hash % 18) + grit;
+                int green = mortar ? 70 : 104 + (hash % 12) + grit / 2;
+                int blue = mortar ? 62 : 86 + (hash % 8);
+                red = std::clamp(red, 40, 180);
+                green = std::clamp(green, 36, 160);
+                blue = std::clamp(blue, 30, 140);
+                const std::size_t index = (static_cast<std::size_t>(y) * kSize + static_cast<std::size_t>(x)) * 4U;
+                pixels[index] = static_cast<std::uint8_t>(red);
+                pixels[index + 1U] = static_cast<std::uint8_t>(green);
+                pixels[index + 2U] = static_cast<std::uint8_t>(blue);
+                pixels[index + 3U] = 255;
+            }
+        }
+        static_cast<void>(roadTexture_.uploadRgba(kSize, kSize, pixels.data(), true));
+    }
+
+    void drawLaneRoad(
+        const glm::mat4& view,
+        const glm::mat4& projection,
+        const WorldLightSettings& light) {
+        ensureRoadTexture();
+        if (!roadTexture_.isValid()) {
+            return;
+        }
+        constexpr float kTile = 3.4F;
+        constexpr float kRoadDepth = 5.2F;
+        float cursor = visibleGround_.minX;
+        int drawn = 0;
+        while (cursor < visibleGround_.maxX && drawn < 24) {
+            spriteRenderer.drawGroundQuad(
+                roadTexture_,
+                glm::vec3(cursor + kTile * 0.5F, 0.08F, kLaneCenterZ),
+                kTile,
+                kRoadDepth,
+                view,
+                projection,
+                light.playerPos,
+                light.radius,
+                std::max(light.ambientDark, 0.55F),
+                std::max(light.ambientBright, 0.95F));
+            cursor += kTile;
+            ++drawn;
+        }
+    }
+
     void renderWorld() {
         if (!laneActive_ && !zoneManager.allowsFreeMovement()) {
             glDisable(GL_DEPTH_TEST);
@@ -6428,6 +6607,10 @@ struct GameApplication::Impl {
             playerCommand.sortKey = gameplay::isometricSortKey(cameraMatrices.view, playerPosition);
             playerCommand.sortId = std::numeric_limits<std::uint32_t>::max();
             spriteDrawCommands_.push_back(playerCommand);
+        }
+
+        if (laneActive_) {
+            drawLaneRoad(cameraMatrices.view, cameraMatrices.projection, worldLight);
         }
 
         glDisable(GL_DEPTH_TEST);
@@ -6892,8 +7075,13 @@ struct GameApplication::Impl {
 
     void renderFpsLabel() const {
         const ui::UiScale layout = currentUiScale();
-        const float color[4] = {0.95F, 0.86F, 0.55F, 0.9F};
-        textRenderer.drawText(layout.dim(12.0F), layout.dim(8.0F), fpsLabel_, layout.dim(1.5F), color);
+        const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(layout);
+        const float color[4] = {0.98F, 0.9F, 0.55F, 0.95F};
+        const float scale = layout.dim(1.35F);
+        const float textWidth = textRenderer.measureTextWidth(fpsLabel_, scale);
+        const float x = std::max(8.0F, static_cast<float>(window.width()) - textWidth - layout.dim(16.0F));
+        const float y = std::max(4.0F, console.panel.y - layout.dim(18.0F));
+        textRenderer.drawText(x, y, fpsLabel_, scale, color);
     }
 
     static void rarityColors(
@@ -7369,39 +7557,37 @@ struct GameApplication::Impl {
         const ui::UiScale scale = currentUiScale();
         const ui::CharacterPanelLayout panel = ui::computeCharacterPanelLayout(scale);
         drawRpgPanel(panel.panel);
-        const float titleFill[4] = {0.42F, 0.08F, 0.09F, 0.95F};
-        uiRenderer.drawFilledRect(
-            panel.titleBand.x, panel.titleBand.y, panel.titleBand.width, panel.titleBand.height, titleFill);
-
-        const float parchment[4] = {0.62F, 0.48F, 0.30F, 0.96F};
-        if (!drawGeneratedFrame("parchment", panel.spellsPane)) {
-            uiRenderer.drawFilledRect(
-                panel.spellsPane.x, panel.spellsPane.y, panel.spellsPane.width, panel.spellsPane.height, parchment);
-            drawRpgFrame(panel.spellsPane, scale.dim(5.0F));
-        }
-
-        const float nebula[4] = {0.03F, 0.03F, 0.08F, 0.94F};
-        if (!drawGeneratedFrame("nebula", panel.talentsPane)) {
-            uiRenderer.drawFilledRect(
-                panel.talentsPane.x, panel.talentsPane.y, panel.talentsPane.width, panel.talentsPane.height, nebula);
-            const float redWash[4] = {0.55F, 0.08F, 0.05F, 0.28F};
-            const float blueWash[4] = {0.08F, 0.16F, 0.55F, 0.38F};
-            uiRenderer.drawFilledRect(
-                panel.talentsPane.x,
-                panel.talentsPane.y,
-                panel.talentsPane.width * 0.48F,
-                panel.talentsPane.height,
-                redWash);
-            uiRenderer.drawFilledRect(
-                panel.talentsPane.x + panel.talentsPane.width * 0.48F,
-                panel.talentsPane.y,
-                panel.talentsPane.width * 0.52F,
-                panel.talentsPane.height,
-                blueWash);
-        }
+        const auto paintPane = [&](const ui::Rect& pane) {
+            const float wood[4] = {0.15F, 0.08F, 0.04F, 0.96F};
+            uiRenderer.drawFilledRect(pane.x, pane.y, pane.width, pane.height, wood);
+            const float inset = scale.dim(6.0F);
+            if (pane.width > inset * 3.0F && pane.height > inset * 3.0F) {
+                const float inner[4] = {0.07F, 0.04F, 0.025F, 0.55F};
+                uiRenderer.drawFilledRect(
+                    pane.x + inset, pane.y + inset, pane.width - inset * 2.0F, pane.height - inset * 2.0F, inner);
+            }
+            drawRpgFrame(pane, scale.dim(5.0F));
+        };
+        paintPane(panel.spellsPane);
+        paintPane(panel.talentsPane);
 
         drawPortraitInRect(panel.portrait);
-        drawResourceBars(panel.hpBar, panel.xpBar);
+        const ui::CharacterScreenData& vitals = overlayState.characterScreen();
+        const systems::EffectiveCharacterStats effective = effectiveCharacterStats();
+        const int maxHealth = std::max(effective.maxHealth, 1);
+        const float healthRatio = static_cast<float>(playerCurrentHealth_) / static_cast<float>(maxHealth);
+        const int nextSoulUpgradeCost = systems::soulUpgradeCost(vitals.statUpgradesPurchased);
+        const float soulRatio = nextSoulUpgradeCost > 0
+                                    ? std::min(
+                                          1.0F,
+                                          static_cast<float>(vitals.carriedSouls) /
+                                              static_cast<float>(nextSoulUpgradeCost))
+                                    : 0.0F;
+        const float hpLiquid[4] = {0.78F, 0.12F, 0.12F, 1.0F};
+        const float soulLiquid[4] = {0.95F, 0.74F, 0.22F, 1.0F};
+        drawVitalBar(panel.hpBar, healthRatio, hpLiquid);
+        drawVitalBar(panel.xpBar, soulRatio, soulLiquid);
+        drawRpgButton(panel.closeButton, false, true);
 
         const ui::AbilityBoardLayout board = ui::computeAbilityBoardLayout(panel, scale);
         const systems::SkillId basicIds[] = {
@@ -7462,21 +7648,22 @@ struct GameApplication::Impl {
         const bool inTown = zoneManager.activeZone() == gameplay::WorldZone::TOWN;
         const int upgradeCost = systems::soulUpgradeCost(base.statUpgradesPurchased);
         const float titleColor[4] = {0.98F, 0.9F, 0.62F, 1.0F};
-        const float ink[4] = {0.22F, 0.12F, 0.06F, 1.0F};
-        const float hintColor[4] = {0.72F, 0.68F, 0.58F, 0.9F};
-        const float headerColor[4] = {0.78F, 0.86F, 1.0F, 1.0F};
+        const float cream[4] = {0.96F, 0.9F, 0.74F, 1.0F};
+        const float hintColor[4] = {0.78F, 0.7F, 0.48F, 0.95F};
+        const float headerColor[4] = {0.98F, 0.86F, 0.48F, 1.0F};
 
         drawBoundedText(panel.titleBand, "ABILITIES", panel.titleScale, titleColor);
+        drawBoundedText(panel.closeButton, "Close", panel.statLabelScale, titleColor);
 
-        const ui::Rect spellsTitle{
-            panel.portrait.x + panel.portrait.width + scale.dim(8.0F),
-            panel.portrait.y,
-            std::max(scale.dim(40.0F), panel.spellsPane.x + panel.spellsPane.width - panel.portrait.x - panel.portrait.width - scale.dim(12.0F)),
-            scale.dim(22.0F)};
-        drawBoundedText(spellsTitle, "SPELLS", panel.bodyScale, ink);
-        drawResourceBarLabels(panel.hpBar, panel.xpBar);
+        const int maxHealth = std::max(effectiveCharacterStats().maxHealth, 1);
+        std::ostringstream hpLine;
+        hpLine << "Health  " << playerCurrentHealth_ << " / " << maxHealth;
+        drawBoundedText(panel.hpLabel, hpLine.str(), panel.statLabelScale, cream);
+        std::ostringstream soulLine;
+        soulLine << "Souls  " << base.carriedSouls;
+        drawBoundedText(panel.soulLabel, soulLine.str(), panel.statLabelScale, headerColor);
 
-        const float goldColor[4] = {0.35F, 0.22F, 0.08F, 1.0F};
+        const float goldColor[4] = {0.98F, 0.84F, 0.42F, 1.0F};
         std::ostringstream goldLine;
         goldLine << "Gold " << ui::formatGroupedNumber(tradeSystem.playerGold());
         drawBoundedText(panel.goldLabel, goldLine.str(), panel.statLabelScale, goldColor);
@@ -7488,15 +7675,22 @@ struct GameApplication::Impl {
         const systems::SkillId specialtyIds[] = {
             systems::SkillId::Heal, systems::SkillId::Dash, systems::SkillId::Shout};
         const auto labelSection = [&](const ui::AbilitySpellLayout& section, const char* title, const systems::SkillId* ids) {
-            drawBoundedText(section.header, title, panel.statLabelScale, ink);
+            drawBoundedText(section.header, title, panel.statLabelScale, headerColor);
             const float glyph[4] = {0.98F, 0.96F, 0.9F, 1.0F};
+            const float slotW = section.iconCount > 0 ? section.header.width / static_cast<float>(section.iconCount) : section.header.width;
             for (int index = 0; index < section.iconCount; ++index) {
                 const systems::SkillDefinition& skill = systems::skillDefinition(ids[index]);
-                if (generatedFrameReady(skillIconFrame(skill.id))) {
-                    continue;
+                const ui::Rect& icon = section.icons[static_cast<std::size_t>(index)];
+                if (!generatedFrameReady(skillIconFrame(skill.id))) {
+                    const char letter[2] = {skill.glyph, '\0'};
+                    textRenderer.drawTextCentered(icon, letter, panel.bodyScale, glyph);
                 }
-                const char letter[2] = {skill.glyph, '\0'};
-                textRenderer.drawTextCentered(section.icons[static_cast<std::size_t>(index)], letter, panel.bodyScale, glyph);
+                const ui::Rect name{
+                    section.header.x + static_cast<float>(index) * slotW,
+                    icon.y + icon.height + scale.dim(1.0F),
+                    slotW,
+                    scale.dim(13.0F)};
+                drawBoundedText(name, skill.name, panel.statLabelScale * 0.9F, cream);
             }
         };
         labelSection(board.basic, "BASIC ATTACKS", basicIds);
@@ -7504,10 +7698,7 @@ struct GameApplication::Impl {
         labelSection(board.specialties, "SPECIALTIES", specialtyIds);
 
         std::ostringstream upgradeHeader;
-        upgradeHeader << "TALENTS   " << base.carriedSouls << "/" << upgradeCost;
-        if (!inTown) {
-            upgradeHeader << "  town";
-        }
+        upgradeHeader << "TALENTS   Souls " << base.carriedSouls << "   Cost " << upgradeCost;
         drawBoundedText(panel.upgradeHeader, upgradeHeader.str(), panel.statLabelScale, headerColor);
 
         const ui::Rect* nodes[] = {

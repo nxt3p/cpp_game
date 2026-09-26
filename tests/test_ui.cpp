@@ -3,6 +3,7 @@
 
 #include <cmath>
 
+#include "game/PointerEdge.hpp"
 #include "ui/GlobeFill.hpp"
 #include "ui/HudConsoleLayout.hpp"
 #include "ui/LootPresentation.hpp"
@@ -58,6 +59,12 @@ TEST_CASE("Character panel layout reserves non-overlapping level up buttons", "[
     CHECK(layout.spellsPane.contains(
         board.basic.icons[0].x + board.basic.icons[0].width * 0.5F,
         board.basic.icons[0].y + board.basic.icons[0].height * 0.5F));
+    CHECK(layout.hpBar.y >= layout.hpLabel.y + layout.hpLabel.height - 0.5F);
+    CHECK(layout.xpBar.y >= layout.soulLabel.y + layout.soulLabel.height - 0.5F);
+    CHECK(layout.closeButton.width > 20.0F);
+    CHECK(layout.panel.contains(
+        layout.closeButton.x + layout.closeButton.width * 0.5F,
+        layout.closeButton.y + layout.closeButton.height * 0.5F));
 }
 
 TEST_CASE("Paper doll inventory layout exposes fifteen equipment slots", "[ui][layout]") {
@@ -173,6 +180,28 @@ TEST_CASE("Ui interaction registry resolves slots and blocking regions", "[ui][i
     CHECK(registry.blocksWorldInput(tradeX, tradeY));
 
     CHECK_FALSE(registry.blocksWorldInput(2.0F, 2.0F));
+}
+
+TEST_CASE("Held menu clicks do not toggle again on the next frame", "[ui][input]") {
+    const game::PointerEdgeState opened = game::advancePointerEdge(true, true, false);
+    CHECK(opened.pressed);
+    CHECK_FALSE(opened.released);
+    CHECK(opened.mouseWasDown);
+
+    const game::PointerEdgeState held = game::advancePointerEdge(false, true, opened.mouseWasDown);
+    CHECK_FALSE(held.pressed);
+    CHECK_FALSE(held.released);
+    CHECK(held.mouseWasDown);
+
+    const game::PointerEdgeState letGo = game::advancePointerEdge(false, false, held.mouseWasDown);
+    CHECK_FALSE(letGo.pressed);
+    CHECK(letGo.released);
+    CHECK_FALSE(letGo.mouseWasDown);
+
+    const game::PointerEdgeState synthetic = game::advancePointerEdge(true, false, false);
+    CHECK(synthetic.pressed);
+    CHECK(synthetic.released);
+    CHECK_FALSE(synthetic.mouseWasDown);
 }
 
 TEST_CASE("Grouped numbers and stacked loot beams", "[ui][loot]") {

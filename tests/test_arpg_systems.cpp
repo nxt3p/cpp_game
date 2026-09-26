@@ -190,6 +190,10 @@ TEST_CASE("Hud console layout keeps bars, slots and strip inside the screen", "[
         CHECK(console.levelBadge.x + console.levelBadge.width <= console.healthBar.x + 0.5F);
         CHECK(console.levelBadge.y + console.levelBadge.height <= console.panel.y + console.panel.height + 0.5F);
         CHECK(console.healthBar.y >= console.panel.y);
+        CHECK(console.healthLabel.y + console.healthLabel.height <= console.healthBar.y + 0.5F);
+        CHECK(console.manaLabel.y + console.manaLabel.height <= console.manaBar.y + 0.5F);
+        CHECK(console.soulsLabel.y + 0.5F >= console.manaBar.y + console.manaBar.height);
+        CHECK(console.soulsLabel.y + console.soulsLabel.height <= console.panel.y + console.panel.height + 0.5F);
         CHECK(console.manaBar.y + console.manaBar.height <= console.panel.y + console.panel.height + 0.5F);
         CHECK(console.menuIcons[0].x > console.beltSlots[3].x + console.beltSlots[3].width - 1.0F);
         CHECK(console.menuIcons[ui::HudConsoleLayout::kMenuIconCount - 1].x +

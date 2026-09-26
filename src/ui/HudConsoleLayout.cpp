@@ -7,8 +7,6 @@ namespace ui {
 namespace {
 
 constexpr float kRefBarWidth = 188.0F;
-constexpr float kRefBarHeight = 22.0F;
-constexpr float kRefBarGap = 6.0F;
 constexpr float kRefBadge = 40.0F;
 constexpr float kRefClusterInset = 10.0F;
 constexpr float kRefBadgeGap = 8.0F;
@@ -34,11 +32,12 @@ HudConsoleLayout computeHudConsoleLayout(const UiScale& scale) noexcept {
 
     const float inset = scale.dim(kRefClusterInset);
     const float badge = scale.dim(kRefBadge);
-    const float barH = scale.dim(kRefBarHeight);
-    const float barGap = scale.dim(kRefBarGap);
+    const float labelH = scale.dim(14.0F);
+    const float barH = scale.dim(16.0F);
+    const float barGap = scale.dim(4.0F);
+    const float labelGap = scale.dim(1.0F);
     const float badgeGap = scale.dim(kRefBadgeGap);
     float barW = scale.dim(kRefBarWidth);
-    const float stackH = barH * 2.0F + barGap;
     const float menuReserve =
         static_cast<float>(HudConsoleLayout::kMenuIconCount) * scale.dim(kRefMenuIcon) +
         static_cast<float>(HudConsoleLayout::kMenuIconCount - 1) * scale.dim(kRefMenuGap) +
@@ -46,13 +45,17 @@ HudConsoleLayout computeHudConsoleLayout(const UiScale& scale) noexcept {
     const float maxBarRight = std::max(inset + badge + badgeGap + scale.dim(72.0F), screenW - menuReserve - scale.dim(120.0F));
     barW = std::min(barW, std::max(scale.dim(72.0F), maxBarRight - (inset + badge + badgeGap)));
 
-    const float clusterTop = layout.panel.y + std::max(scale.dim(4.0F), (consoleH - stackH) * 0.62F);
-    layout.levelBadge = {inset, clusterTop + (stackH - badge) * 0.5F, badge, badge};
+    const float stackTop = layout.panel.y + scale.dim(20.0F);
+    const float barX = inset + badge + badgeGap;
+    layout.healthLabel = {barX, stackTop, barW, labelH};
+    layout.healthBar = {barX, stackTop + labelH + labelGap, barW, barH};
+    const float manaTop = layout.healthBar.y + barH + barGap;
+    layout.manaLabel = {barX, manaTop, barW, labelH};
+    layout.manaBar = {barX, manaTop + labelH + labelGap, barW, barH};
+    const float barStackTop = layout.healthBar.y;
+    const float barStackH = (layout.manaBar.y + barH) - barStackTop;
+    layout.levelBadge = {inset, barStackTop + (barStackH - badge) * 0.5F, badge, badge};
     layout.levelLabel = layout.levelBadge;
-    layout.healthBar = {inset + badge + badgeGap, clusterTop, barW, barH};
-    layout.manaBar = {layout.healthBar.x, clusterTop + barH + barGap, barW, barH};
-    layout.healthLabel = layout.healthBar;
-    layout.manaLabel = layout.manaBar;
 
     const float menuSize = scale.dim(kRefMenuIcon);
     const float menuGap = scale.dim(kRefMenuGap);
@@ -103,10 +106,10 @@ HudConsoleLayout computeHudConsoleLayout(const UiScale& scale) noexcept {
     layout.xpBar = {slotsLeft, layout.panel.y + scale.dim(6.0F), xpWidth, scale.dim(kRefXpBarHeight)};
 
     layout.soulsLabel = {
-        slotsLeft,
-        layout.panel.y + consoleH - scale.dim(16.0F),
-        std::min(scale.dim(280.0F), xpWidth),
-        scale.dim(14.0F)};
+        layout.healthBar.x,
+        layout.manaBar.y + layout.manaBar.height + scale.dim(3.0F),
+        layout.healthBar.width,
+        labelH};
 
     const float messageW = std::min(scale.dim(kRefMessageWidth), screenW * 0.7F);
     layout.messageStrip = {

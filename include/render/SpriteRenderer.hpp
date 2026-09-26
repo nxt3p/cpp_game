@@ -65,6 +65,20 @@ public:
         float ambientBright,
         const glm::vec4& tint = glm::vec4(1.0F)) const;
 
+    /// Flat textured quad on the ground plane (y is up). UVs are not repeated inside the quad.
+    void drawGroundQuad(
+        const Texture& texture,
+        const glm::vec3& center,
+        float sizeX,
+        float sizeZ,
+        const glm::mat4& view,
+        const glm::mat4& projection,
+        const glm::vec3& playerLightPosition,
+        float lightRadius,
+        float ambientDark,
+        float ambientBright,
+        const glm::vec4& tint = glm::vec4(1.0F)) const;
+
     /// Flat ellipse on the ground plane, widened along camera-right. Drawn before the owner's billboard.
     void drawGroundShadow(
         const Texture& texture,
