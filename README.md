@@ -27,7 +27,7 @@ The same gameplay code runs natively (Linux/WSL/Windows) and in the browser via 
 - **Slot-machine loot** — Kills and chests spin a reel, but early drops are scarce. Rarity runs Common, Magic (blue), Rare (yellow), Legendary (brown), Unique (green). Mythical (magenta) is a tavern gamble at about 1 in 10,000, not a combat drop
 - **Progression** — Soul-based stat upgrades in Town, weapon mastery, depth scaling, Normal / Nightmare / Hell difficulty tiers unlocked by boss kills
 - **Dark-fantasy presentation** — Torch-lit shading with cool shadows and fog, particle system (hit sparks, death bursts, spell flashes, ambient dust), 8-way sprite facing with hit / death animation states
-- **Deskrawl-style HUD** — Clustered health / mana globes, level badge, skill quick-slots with cooldown sweeps, potion count, bottom-right menu icons, XP bar, minimap overlay
+- **Fantasy HUD** — Stacked health and mana bars with a level badge, skill quick-slots with cooldown sweeps, potion belt, bottom-right menu icons, XP bar, minimap overlay. Panels share one metal-and-gold frame.
 - **Inventory & equipment** — Paper-doll UI, item stats, hover tooltips with stat comparison versus equipped gear, socketed items, blacksmith sell/forge services
 - **Save / load** — Single-slot saves with Continue flow; platform-specific persistence (see below)
 
@@ -167,6 +167,14 @@ python scripts/generate_town_sd.py --backend flux --cpu-offload
 ```
 
 `python scripts/generate_town_sd.py --dry-run` prints prompts without a GPU. `--placeholders` rewrites the committed pixel-art stand-ins (Pillow only) if the PNGs are missing.
+
+Health, mana, and menu frames are drawn in the engine (wood, metal, gold filigree), so they do not need a GPU. Skill and item icons stay on the existing atlases. To repaint those atlases on the RTX 5080:
+
+```bash
+python scripts/generate_rpg_atlases_sd.py --backend sdxl
+```
+
+Flux, after the license and login: `python scripts/generate_rpg_atlases_sd.py --backend flux --cpu-offload`.
 
 ### Pause menu
 

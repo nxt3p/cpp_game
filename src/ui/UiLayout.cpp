@@ -404,6 +404,63 @@ Rect TradeWindowLayout::vendorSlotRect(const int index) const noexcept {
     return {x, y, slotSize, slotSize};
 }
 
+/// Top of the first backpack cell for the default 6x4 paper doll.
+/// Trade chrome stays above this so forge buttons do not steal bag clicks.
+float defaultBagSlotTop(const UiScale& scale) noexcept {
+    constexpr int kBagColumns = 6;
+    constexpr int kBagRows = 4;
+    constexpr int kDollRows = 6;
+    constexpr float kGapPerSlot = 6.0F / 50.0F;
+
+    const float padding = scale.dim(12.0F);
+    const float titleBandHeight = scale.dim(30.0F);
+    const float bagSeparatorHeight = scale.dim(22.0F);
+    const float statsSidebarWidth = scale.dim(168.0F);
+    const float topLimit = scale.dim(48.0F);
+    const float bottomLimit =
+        static_cast<float>(scale.height) - scale.dim(kReferenceHudConsoleHeight) - scale.dim(8.0F);
+    const float maxPanelHeight = std::max(bottomLimit - topLimit, scale.dim(280.0F));
+    const float dollPad = scale.dim(4.0F);
+    const float fixedChrome = padding * 2.0F + titleBandHeight + bagSeparatorHeight + dollPad;
+    const float slotRows = static_cast<float>(kDollRows + kBagRows);
+    const float gapRows = static_cast<float>((kDollRows - 1) + (kBagRows - 1));
+    const float perSlot = slotRows + gapRows * kGapPerSlot;
+    const float fittedSlot = (maxPanelHeight - fixedChrome) / std::max(perSlot, 1.0F);
+    const float slotFloor = scale.dim(28.0F) * scale.touchBoost;
+    const float slotCeil = scale.dim(50.0F) * std::max(1.0F, scale.touchBoost);
+    float slotSize = std::clamp(fittedSlot, slotFloor, slotCeil);
+    if (scale.platform != UiPlatformKind::Desktop) {
+        slotSize = std::max(slotSize, std::min(scale.minTouchTarget(), fittedSlot));
+    }
+
+    const float maxPanelWidth = std::max(scale.dim(180.0F), static_cast<float>(scale.width) - scale.dim(8.0F));
+    const auto panelWidthForSlot = [&](const float slot) {
+        const float gap = slot * kGapPerSlot;
+        const float bagWidthForSlot =
+            static_cast<float>(kBagColumns) * slot + gap * static_cast<float>(kBagColumns - 1);
+        const float dollGrid = slot * 3.0F + gap * 2.0F;
+        const float dollArea = std::max(dollGrid, bagWidthForSlot);
+        return dollArea + statsSidebarWidth + padding * 3.0F;
+    };
+    for (int guard = 0; guard < 12 && panelWidthForSlot(slotSize) > maxPanelWidth; ++guard) {
+        slotSize *= 0.92F;
+    }
+    if (slotSize > fittedSlot && panelWidthForSlot(fittedSlot) <= maxPanelWidth) {
+        slotSize = std::min(slotSize, fittedSlot);
+    }
+
+    const float slotGap = slotSize * kGapPerSlot;
+    const float dollBandHeight =
+        static_cast<float>(kDollRows) * slotSize + static_cast<float>(kDollRows - 1) * slotGap + dollPad;
+    const float bagHeight =
+        static_cast<float>(kBagRows) * slotSize + slotGap * static_cast<float>(kBagRows - 1);
+    const float panelHeight =
+        padding * 2.0F + titleBandHeight + dollBandHeight + bagSeparatorHeight + bagHeight;
+    const float regionHeight = std::max(bottomLimit - topLimit, panelHeight);
+    const float panelY = topLimit + std::max(0.0F, (regionHeight - panelHeight) * 0.5F);
+    return panelY + padding + titleBandHeight + dollBandHeight + bagSeparatorHeight;
+}
+
 Rect TradeWindowLayout::serviceButtonRect(const int serviceIndex) const noexcept {
     const float buttonGap = slotGap;
     const float totalGap = buttonGap * static_cast<float>(kServiceCount - 1);
@@ -416,34 +473,45 @@ Rect TradeWindowLayout::serviceButtonRect(const int serviceIndex) const noexcept
 
 TradeWindowLayout computeTradeWindowLayout(const UiScale& scale) noexcept {
     TradeWindowLayout layout{};
+    // Phones clamp uniform very low while height scale stays near 1. Vertical
+    // chrome follows the taller of the two so forge buttons can hold two lines.
+    const float vertical = std::min(std::max(scale.uniform, scale.scaleY), std::max(scale.uniform, 1.85F));
     layout.slotSize = scale.dim(44.0F);
     layout.slotGap = scale.dim(6.0F);
-    layout.gridPadX = scale.dim(14.0F);
-    layout.gridTopOffset = scale.dim(72.0F);
+    layout.gridPadX = scale.dim(16.0F);
+    layout.gridTopOffset = vertical * 78.0F;
 
-    const float panelW = scale.dim(360.0F);
-    const float panelH = scale.dim(330.0F);
-    const float sideMargin = scale.x(72.0F);
-    const float panelY = scale.y(118.0F);
+    const float screenW = static_cast<float>(scale.width);
+    const float consoleTop = static_cast<float>(scale.height) - scale.dim(kReferenceHudConsoleHeight);
+    const float sideMargin = std::max(scale.dim(12.0F), scale.x(36.0F));
+    const float panelW = std::min(scale.dim(380.0F), (screenW - sideMargin * 2.0F - scale.dim(16.0F)) * 0.5F);
+    const float bagTop = defaultBagSlotTop(scale);
+    // Sit under the town notice banner (about the top 52px at 720p).
+    const float servicesTop = std::max(scale.dim(54.0F), 56.0F * std::min(vertical, 1.2F));
+    float servicesH = 118.0F * vertical;
+    const float servicesGap = 8.0F * vertical;
+    const float servicesBottomLimit = bagTop - 6.0F * vertical;
+    if (servicesTop + servicesH > servicesBottomLimit) {
+        servicesH = std::max(56.0F * vertical, servicesBottomLimit - servicesTop);
+    }
 
-    layout.playerPanel = {sideMargin, panelY, panelW, panelH};
-    layout.vendorPanel = {
-        static_cast<float>(scale.width) - sideMargin - panelW,
-        panelY,
-        panelW,
-        panelH};
-
-    const float servicesW = scale.dim(620.0F);
-    const float servicesH = scale.dim(92.0F);
+    const float servicesW = std::min(screenW - scale.dim(28.0F), 980.0F * std::min(vertical, 1.35F));
     layout.servicesPanel = {
-        static_cast<float>(scale.width) * 0.5F - servicesW * 0.5F,
-        panelY + panelH + scale.dim(12.0F),
+        screenW * 0.5F - servicesW * 0.5F,
+        servicesTop,
         servicesW,
         servicesH};
 
-    const float titlePadX = scale.dim(16.0F);
-    const float titlePadY = scale.dim(12.0F);
-    const float titleHeight = scale.dim(28.0F);
+    const float panelY = servicesTop + servicesH + servicesGap;
+    float panelH = std::min(318.0F * vertical, consoleTop - 8.0F * vertical - panelY);
+    panelH = std::max(panelH, 0.0F);
+
+    layout.playerPanel = {sideMargin, panelY, panelW, panelH};
+    layout.vendorPanel = {screenW - sideMargin - panelW, panelY, panelW, panelH};
+
+    const float titlePadX = scale.dim(18.0F);
+    const float titlePadY = 12.0F * vertical;
+    const float titleHeight = 28.0F * vertical;
     layout.playerTitle = {
         layout.playerPanel.x + titlePadX,
         layout.playerPanel.y + titlePadY,
@@ -456,15 +524,16 @@ TradeWindowLayout computeTradeWindowLayout(const UiScale& scale) noexcept {
         titleHeight};
     layout.servicesTitle = {
         layout.servicesPanel.x + titlePadX,
-        layout.servicesPanel.y + scale.dim(8.0F),
+        layout.servicesPanel.y + 8.0F * vertical,
         layout.servicesPanel.width - titlePadX * 2.0F,
         titleHeight};
-    layout.servicesButtonY = layout.servicesTitle.y + layout.servicesTitle.height + scale.dim(6.0F);
-    layout.servicesButtonHeight =
-        layout.servicesPanel.height - (layout.servicesButtonY - layout.servicesPanel.y) - scale.dim(8.0F);
+    layout.servicesButtonY = layout.servicesTitle.y + layout.servicesTitle.height + 8.0F * vertical;
+    const float buttonRoom =
+        layout.servicesPanel.y + layout.servicesPanel.height - layout.servicesButtonY - 8.0F * vertical;
+    layout.servicesButtonHeight = std::max(24.0F, buttonRoom);
 
-    const float goldBandY = layout.playerPanel.y + scale.dim(44.0F);
-    const float goldBandHeight = scale.dim(22.0F);
+    const float goldBandY = layout.playerPanel.y + 46.0F * vertical;
+    const float goldBandHeight = 22.0F * vertical;
     layout.playerGoldLabel = {
         layout.playerPanel.x + titlePadX,
         goldBandY,
@@ -476,9 +545,9 @@ TradeWindowLayout computeTradeWindowLayout(const UiScale& scale) noexcept {
         layout.vendorPanel.width - titlePadX * 2.0F,
         goldBandHeight};
 
-    layout.titleScale = scale.dim(2.0F);
-    layout.valueScale = scale.dim(1.7F);
-    layout.serviceScale = scale.dim(1.35F);
+    layout.titleScale = 1.9F * std::min(vertical, 1.65F);
+    layout.valueScale = 1.45F * std::min(vertical, 1.65F);
+    layout.serviceScale = 1.15F * std::min(vertical, 1.5F);
     return layout;
 }
 

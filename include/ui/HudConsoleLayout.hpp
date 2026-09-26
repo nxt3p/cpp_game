@@ -8,8 +8,8 @@
 
 namespace ui {
 
-/// Deskrawl-style bottom chrome: health and mana globes clustered on the left,
-/// skill quickbar and potion belt in the middle, menu icons on the right.
+/// Bottom chrome: stacked health and mana bars on the left, skill quickbar and
+/// potion belt in the middle, menu icons on the right.
 struct HudConsoleLayout {
     static constexpr int kSkillSlotCount = 8;
     static constexpr int kBeltSlotCount = 4;
@@ -17,8 +17,8 @@ struct HudConsoleLayout {
 
     Rect panel{};
     Rect xpBar{};
-    Rect healthGlobe{};
-    Rect manaGlobe{};
+    Rect healthBar{};
+    Rect manaBar{};
     Rect healthLabel{};
     Rect manaLabel{};
     Rect levelLabel{};
@@ -29,20 +29,15 @@ struct HudConsoleLayout {
     std::array<Rect, kBeltSlotCount> beltSlots{};
     std::array<Rect, kMenuIconCount> menuIcons{};
     float slotSize{0.0F};
-    float globeRadius{0.0F};
     float labelScale{1.5F};
     float hotkeyScale{1.3F};
-
-    [[nodiscard]] float healthGlobeCenterX() const noexcept { return healthGlobe.x + healthGlobe.width * 0.5F; }
-    [[nodiscard]] float healthGlobeCenterY() const noexcept { return healthGlobe.y + healthGlobe.height * 0.5F; }
-    [[nodiscard]] float manaGlobeCenterX() const noexcept { return manaGlobe.x + manaGlobe.width * 0.5F; }
-    [[nodiscard]] float manaGlobeCenterY() const noexcept { return manaGlobe.y + manaGlobe.height * 0.5F; }
 };
 
 /// Reference height of the console at 1280x720 (scaled by UiScale::dim).
 constexpr float kReferenceHudConsoleHeight = 112.0F;
 
 /// Punched hole in the generated globe ring, as a fraction of the globe radius.
+/// Kept for the liquid-fill math even though the HUD draws bars.
 constexpr float kGlobeRingInnerRadiusFraction = 0.64F;
 /// Liquid disc stays inside that hole, including the surface bob.
 constexpr float kGlobeLiquidRadiusFraction = 0.58F;

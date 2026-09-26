@@ -195,6 +195,33 @@ TEST_CASE("Grouped numbers and stacked loot beams", "[ui][loot]") {
     CHECK(loot.beacons().empty());
 }
 
+TEST_CASE("Blacksmith panels keep forge buttons readable above the HUD", "[ui][trade]") {
+    const ui::UiScale scale(1280, 720);
+    const ui::TradeWindowLayout trade = ui::computeTradeWindowLayout(scale);
+    const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(scale);
+
+    CHECK(trade.playerPanel.x + trade.playerPanel.width < trade.vendorPanel.x);
+    CHECK(trade.servicesPanel.y + trade.servicesPanel.height <= trade.playerPanel.y + 0.5F);
+    CHECK(trade.playerPanel.y + trade.playerPanel.height <= console.panel.y + 0.5F);
+    CHECK(trade.servicesButtonHeight >= 48.0F);
+    const ui::InventoryPaperDollLayout bag = ui::computeInventoryPaperDollLayout(scale, 6, 4);
+    const ui::Rect bagSlot = bag.inventorySlotRect(0);
+    CHECK(trade.servicesPanel.y + trade.servicesPanel.height <= bagSlot.y + 0.5F);
+
+    ui::Rect previous = trade.serviceButtonRect(0);
+    CHECK(previous.height == Catch::Approx(trade.servicesButtonHeight).margin(0.5F));
+    CHECK(trade.servicesPanel.contains(previous.x + 1.0F, previous.y + 1.0F));
+    for (int index = 1; index < ui::TradeWindowLayout::kServiceCount; ++index) {
+        const ui::Rect button = trade.serviceButtonRect(index);
+        CHECK(button.x >= previous.x + previous.width - 0.5F);
+        CHECK(button.y + button.height <= trade.servicesPanel.y + trade.servicesPanel.height + 0.5F);
+        previous = button;
+    }
+
+    const ui::Rect lastSlot = trade.playerSlotRect(trade.playerColumns * trade.playerRows - 1);
+    CHECK(lastSlot.y + lastSlot.height <= trade.playerPanel.y + trade.playerPanel.height + 0.5F);
+}
+
 TEST_CASE("Item compare cards sit side by side on screen", "[ui][tooltip]") {
     const ui::UiScale scale(1280, 720);
     const std::vector<std::string> candidate = {"Bleeding Edge", "Divine Weapon", "826 DPS"};

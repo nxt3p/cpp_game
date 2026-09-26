@@ -1330,13 +1330,7 @@ struct GameApplication::Impl {
         const ui::Rect& bounds,
         bool hovered,
         bool enabled) const {
-        const float enabledBase[4] = {0.16F, 0.11F, 0.07F, 1.0F};
-        const float enabledHover[4] = {0.28F, 0.18F, 0.08F, 1.0F};
-        const float disabledBase[4] = {0.18F, 0.19F, 0.22F, 0.85F};
-        const float border[4] = {0.92F, 0.78F, 0.32F, enabled ? (hovered ? 1.0F : 0.8F) : 0.35F};
-        const float* fill = !enabled ? disabledBase : (hovered ? enabledHover : enabledBase);
-        uiRenderer.drawFilledRect(bounds.x, bounds.y, bounds.width, bounds.height, fill);
-        uiRenderer.drawOutlineRect(bounds.x, bounds.y, bounds.width, bounds.height, border, 2.0F);
+        drawRpgButton(bounds, hovered, enabled);
     }
 
     void drawPanelButtonLabel(const ui::Rect& bounds, const char* label, bool enabled) const {
@@ -1363,7 +1357,6 @@ struct GameApplication::Impl {
         const float hoverColor[4]) const {
         const bool hovered = hoveredButtonId == button.id;
         const float* fill = hovered ? hoverColor : baseColor;
-        const float border[4] = {hovered ? 1.0F : 0.72F, hovered ? 0.84F : 0.56F, hovered ? 0.42F : 0.22F, 1.0F};
         if (hovered) {
             const float glow[4] = {0.85F, 0.58F, 0.16F, 0.35F};
             const float pad = currentUiScale().dim(5.0F);
@@ -1376,17 +1369,7 @@ struct GameApplication::Impl {
         }
         uiRenderer.drawFilledRect(
             button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height, fill);
-        uiRenderer.drawOutlineRect(
-            button.bounds.x, button.bounds.y, button.bounds.width, button.bounds.height, border, 2.0F);
-        const float inset = currentUiScale().dim(4.0F);
-        const float inner[4] = {0.45F, 0.34F, 0.16F, hovered ? 0.9F : 0.45F};
-        uiRenderer.drawOutlineRect(
-            button.bounds.x + inset,
-            button.bounds.y + inset,
-            button.bounds.width - inset * 2.0F,
-            button.bounds.height - inset * 2.0F,
-            inner,
-            1.0F);
+        drawRpgFrame(button.bounds, currentUiScale().dim(5.0F));
     }
 
     void drawButton(const MenuButton& button, const float baseColor[4], const float hoverColor[4]) {
@@ -2367,23 +2350,12 @@ struct GameApplication::Impl {
         std::vector<MobScreenPlate> plates;
         collectMobPlates(plates);
         for (const MobScreenPlate& plate : plates) {
-            const float frame[4] = {0.05F, 0.04F, 0.05F, 0.92F};
-            const float border[4] = {
-                plate.elite ? 0.95F : 0.55F,
-                plate.elite ? 0.72F : 0.12F,
-                plate.elite ? 0.18F : 0.1F,
+            const float fill[4] = {
+                plate.elite ? 0.92F : 0.78F,
+                plate.elite ? 0.55F : 0.12F,
+                plate.elite ? 0.12F : 0.1F,
                 1.0F};
-            const float fill[4] = {0.82F, 0.16F, 0.12F, 1.0F};
-            uiRenderer.drawFilledRect(plate.bar.x, plate.bar.y, plate.bar.width, plate.bar.height, frame);
-            if (plate.healthRatio > 0.0F) {
-                uiRenderer.drawFilledRect(
-                    plate.bar.x,
-                    plate.bar.y,
-                    plate.bar.width * std::clamp(plate.healthRatio, 0.0F, 1.0F),
-                    plate.bar.height,
-                    fill);
-            }
-            uiRenderer.drawOutlineRect(plate.bar.x, plate.bar.y, plate.bar.width, plate.bar.height, border, 1.5F);
+            drawVitalBar(plate.bar, plate.healthRatio, fill);
         }
     }
 
@@ -2410,15 +2382,8 @@ struct GameApplication::Impl {
         const float barY = layout.y(8.0F);
         const float healthRatio = static_cast<float>(health->currentHp) / static_cast<float>(std::max(health->maxHp, 1));
 
-        const float frameColor[4] = {0.08F, 0.06F, 0.1F, 0.92F};
-        const float borderColor[4] = {0.95F, 0.35F, 0.25F, 1.0F};
-        uiRenderer.drawFilledRect(barX, barY, barWidth, barHeight, frameColor);
-        uiRenderer.drawOutlineRect(barX, barY, barWidth, barHeight, borderColor);
-
         const float fillColor[4] = {0.82F, 0.18F, 0.14F, 1.0F};
-        if (healthRatio > 0.0F) {
-            uiRenderer.drawFilledRect(barX, barY, barWidth * healthRatio, barHeight, fillColor);
-        }
+        drawVitalBar({barX, barY, barWidth, barHeight}, healthRatio, fillColor);
     }
 
     void renderTargetMobHudLabel() const {
@@ -2755,18 +2720,13 @@ struct GameApplication::Impl {
 
     void drawTooltipBackground(const ui::TooltipBoxLayout& layout, const float* borderColor = nullptr) const {
         const ui::Rect& box = layout.box;
-        const float parchment[4] = {0.05F, 0.04F, 0.035F, 1.0F};
-        const float gold[4] = {0.72F, 0.56F, 0.24F, 1.0F};
+        const float gold[4] = {0.86F, 0.64F, 0.24F, 1.0F};
         const float* border = borderColor != nullptr ? borderColor : gold;
-        const float ink[4] = {border[0] * 0.45F, border[1] * 0.45F, border[2] * 0.45F, 0.9F};
-        uiRenderer.drawFilledRect(box.x, box.y, box.width, box.height, parchment);
-        uiRenderer.drawOutlineRect(box.x, box.y, box.width, box.height, border, 2.0F);
+        drawRpgPanel(box);
         const float accent = std::max(3.0F, currentUiScale().dim(4.0F));
-        uiRenderer.drawFilledRect(box.x, box.y, box.width, accent, border);
-        const float inset = currentUiScale().dim(4.0F);
-        if (box.width > inset * 3.0F && box.height > inset * 3.0F) {
-            uiRenderer.drawOutlineRect(
-                box.x + inset, box.y + inset, box.width - inset * 2.0F, box.height - inset * 2.0F, ink, 1.0F);
+        const float inset = currentUiScale().dim(8.0F);
+        if (box.width > inset * 2.0F) {
+            uiRenderer.drawFilledRect(box.x + inset, box.y + inset, box.width - inset * 2.0F, accent, border);
         }
     }
 
@@ -3080,21 +3040,7 @@ struct GameApplication::Impl {
                 glow);
         }
 
-        if (uiAssets.isLoaded()) {
-            const float tint[4] = {1.0F, 1.0F, 1.0F, hovered ? 1.0F : 0.92F};
-            uiRenderer.drawTexturedRect(
-                hovered ? uiAssets.inventorySlotHover() : uiAssets.inventorySlot(),
-                slot.x,
-                slot.y,
-                slot.width,
-                slot.height,
-                tint);
-        } else {
-            const float emptySlot[4] = {0.12F, 0.14F, 0.18F, 1.0F};
-            const float slotBorder[4] = {0.35F, 0.38F, 0.45F, 1.0F};
-            uiRenderer.drawFilledRect(slot.x, slot.y, slot.width, slot.height, emptySlot);
-            uiRenderer.drawOutlineRect(slot.x, slot.y, slot.width, slot.height, slotBorder);
-        }
+        drawItemWell(slot, hovered);
 
         if (!playerEquipment.isSlotOccupied(equipmentSlot)) {
             const char* ghost = equipmentSlotIcon(equipmentSlot);
@@ -3693,22 +3639,7 @@ struct GameApplication::Impl {
         for (int index = 0; index < gameplay::LaneBattle::kNodeCount; ++index) {
             const bool unlocked = gameplay::LaneBattle::nodeUnlocked(index, runProgression_.depth());
             const ui::Rect button = campaignNodeRect(index);
-            float fill[4] = {0.16F, 0.12F, 0.09F, 0.95F};
-            float border[4] = {0.45F, 0.32F, 0.16F, 1.0F};
-            if (!unlocked) {
-                fill[0] = 0.08F;
-                fill[1] = 0.08F;
-                fill[2] = 0.09F;
-                border[0] = 0.25F;
-                border[1] = 0.25F;
-                border[2] = 0.28F;
-            } else if (index == selectedNode_) {
-                border[0] = 0.95F;
-                border[1] = 0.78F;
-                border[2] = 0.28F;
-            }
-            uiRenderer.drawFilledRect(button.x, button.y, button.width, button.height, fill);
-            uiRenderer.drawOutlineRect(button.x, button.y, button.width, button.height, border, 2.0F);
+            drawRpgButton(button, unlocked && index == selectedNode_, unlocked);
         }
     }
 
@@ -3965,10 +3896,9 @@ struct GameApplication::Impl {
                 uiRenderer.drawTexturedRect(plate, art.x, art.y, art.width, art.height, white);
             }
             const ui::Rect caption = ui::townBuildingCaptionRect(rect);
-            const float banner[4] = {0.08F, 0.05F, 0.04F, repaired ? 0.82F : 0.7F};
-            const float bannerEdge[4] = {0.78F, 0.58F, 0.28F, repaired ? 0.95F : 0.45F};
+            const float banner[4] = {0.10F, 0.06F, 0.035F, repaired ? 0.9F : 0.72F};
             uiRenderer.drawFilledRect(caption.x, caption.y, caption.width, caption.height, banner);
-            uiRenderer.drawOutlineRect(caption.x, caption.y, caption.width, caption.height, bannerEdge, 1.5F);
+            drawRpgFrame(caption, 3.5F);
         };
 
         paintBuilding(layout.blacksmith, systems::TownBuilding::Blacksmith, 0, 1);
@@ -3983,23 +3913,9 @@ struct GameApplication::Impl {
         uiRenderer.drawOutlineRect(layout.road.x, layout.road.y, layout.road.width, layout.road.height, roadBorder, 2.0F);
 
         if (tavernPanelOpen_ || healerPanelOpen_) {
-            const float panel[4] = {0.06F, 0.045F, 0.04F, 0.94F};
-            const float border[4] = {0.78F, 0.58F, 0.24F, 1.0F};
-            uiRenderer.drawFilledRect(
-                layout.servicePanel.x, layout.servicePanel.y, layout.servicePanel.width, layout.servicePanel.height, panel);
-            uiRenderer.drawOutlineRect(
-                layout.servicePanel.x,
-                layout.servicePanel.y,
-                layout.servicePanel.width,
-                layout.servicePanel.height,
-                border,
-                2.0F);
-            const float button[4] = {0.36F, 0.16F, 0.08F, 1.0F};
-            const float close[4] = {0.18F, 0.14F, 0.12F, 1.0F};
-            uiRenderer.drawFilledRect(
-                layout.serviceAction.x, layout.serviceAction.y, layout.serviceAction.width, layout.serviceAction.height, button);
-            uiRenderer.drawFilledRect(
-                layout.serviceClose.x, layout.serviceClose.y, layout.serviceClose.width, layout.serviceClose.height, close);
+            drawRpgPanel(layout.servicePanel);
+            drawRpgButton(layout.serviceAction, false, true);
+            drawRpgButton(layout.serviceClose, false, true);
         }
     }
 
@@ -5009,21 +4925,7 @@ struct GameApplication::Impl {
     }
 
     void drawStonePlaque(const ui::Rect& bounds) const {
-        const float fill[4] = {0.07F, 0.05F, 0.045F, 0.9F};
-        const float gold[4] = {0.62F, 0.46F, 0.18F, 0.95F};
-        const float inner[4] = {0.32F, 0.24F, 0.12F, 0.75F};
-        uiRenderer.drawFilledRect(bounds.x, bounds.y, bounds.width, bounds.height, fill);
-        uiRenderer.drawOutlineRect(bounds.x, bounds.y, bounds.width, bounds.height, gold, 2.0F);
-        const float inset = currentUiScale().dim(6.0F);
-        if (bounds.width > inset * 3.0F && bounds.height > inset * 3.0F) {
-            uiRenderer.drawOutlineRect(
-                bounds.x + inset,
-                bounds.y + inset,
-                bounds.width - inset * 2.0F,
-                bounds.height - inset * 2.0F,
-                inner,
-                1.0F);
-        }
+        drawRpgPanel(bounds);
     }
 
     void drawMenuAtmosphere() const {
@@ -5331,16 +5233,9 @@ struct GameApplication::Impl {
         const ui::SettingsPanelLayout layout = settingsPanelLayout();
         const ui::Rect& panel = layout.panel;
 
+        drawRpgPanel(panel);
         if (uiAssets.isLoaded()) {
             const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-            uiRenderer.drawNineSlice(
-                uiAssets.inventoryPanelSlice(),
-                panel.x,
-                panel.y,
-                panel.width,
-                panel.height,
-                currentUiScale().dim(16.0F),
-                white);
             uiRenderer.drawTexturedRect(
                 uiAssets.settingsCross(),
                 layout.closeButton.x,
@@ -5349,10 +5244,7 @@ struct GameApplication::Impl {
                 layout.closeButton.height,
                 white);
         } else {
-            const float panelColor[4] = {0.1F, 0.11F, 0.16F, 0.96F};
-            const float borderColor[4] = {0.45F, 0.55F, 0.85F, 1.0F};
-            uiRenderer.drawFilledRect(panel.x, panel.y, panel.width, panel.height, panelColor);
-            uiRenderer.drawOutlineRect(panel.x, panel.y, panel.width, panel.height, borderColor);
+            drawRpgFrame(layout.closeButton, currentUiScale().dim(3.0F));
         }
 
         const std::vector<SettingsControl> controls = buildSettingsControls();
@@ -5379,12 +5271,7 @@ struct GameApplication::Impl {
                     control.bounds.height,
                     tint);
             } else {
-                const float cycleBg[4] = {0.18F, 0.22F, 0.32F, hovered ? 1.0F : 0.92F};
-                const float cycleBorder[4] = {0.5F, 0.62F, 0.95F, 1.0F};
-                uiRenderer.drawFilledRect(
-                    control.bounds.x, control.bounds.y, control.bounds.width, control.bounds.height, cycleBg);
-                uiRenderer.drawOutlineRect(
-                    control.bounds.x, control.bounds.y, control.bounds.width, control.bounds.height, cycleBorder);
+                drawRpgButton(control.bounds, hovered, true);
             }
         }
 
@@ -6450,22 +6337,7 @@ struct GameApplication::Impl {
         const ui::Rect& frame = widget.frame;
         const ui::Rect& content = widget.content;
 
-        if (uiAssets.isLoaded()) {
-            const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-            uiRenderer.drawNineSlice(
-                uiAssets.inventoryPanelSlice(),
-                frame.x,
-                frame.y,
-                frame.width,
-                frame.height,
-                currentUiScale().dim(14.0F),
-                white);
-        } else {
-            const float frameColor[4] = {0.04F, 0.05F, 0.08F, 0.9F};
-            const float frameBorder[4] = {0.72F, 0.56F, 0.22F, 1.0F};
-            uiRenderer.drawFilledRect(frame.x, frame.y, frame.width, frame.height, frameColor);
-            uiRenderer.drawOutlineRect(frame.x, frame.y, frame.width, frame.height, frameBorder);
-        }
+        drawRpgPanel(frame);
 
         minimap.setViewport(ui::Rect2D{content.x, content.y, content.width, content.height});
         minimap.setViewRadius(kMinimapWorldRadius);
@@ -6524,10 +6396,15 @@ struct GameApplication::Impl {
         pushBlip(0.0F, 40.0F, ui::MinimapBlipKind::Landmark);
 
         const ui::MinimapLayer layer = minimap.buildLayer(0.0F, 0.0F, minimapBlips_);
-        const float disc[4] = {0.05F, 0.04F, 0.035F, 0.92F};
-        const float ring[4] = {0.72F, 0.56F, 0.22F, 1.0F};
-        uiRenderer.drawFilledCircle(layer.center.x, layer.center.y, layer.radiusPixels, ring, 32);
-        uiRenderer.drawFilledCircle(layer.center.x, layer.center.y, std::max(1.0F, layer.radiusPixels - 3.0F), disc, 32);
+        const float disc[4] = {0.04F, 0.025F, 0.018F, 0.94F};
+        const float ring[4] = {0.86F, 0.64F, 0.22F, 1.0F};
+        const float metal[4] = {0.16F, 0.09F, 0.04F, 1.0F};
+        const float ringWidth = std::max(5.0F, currentUiScale().dim(7.0F));
+        uiRenderer.drawFilledCircle(layer.center.x, layer.center.y, layer.radiusPixels, ring, 40);
+        uiRenderer.drawFilledCircle(
+            layer.center.x, layer.center.y, std::max(1.0F, layer.radiusPixels - ringWidth * 0.45F), metal, 40);
+        uiRenderer.drawFilledCircle(
+            layer.center.x, layer.center.y, std::max(1.0F, layer.radiusPixels - ringWidth), disc, 36);
 
         const auto drawBlip = [&](const ui::MinimapMarker& marker) {
             float color[4] = {0.9F, 0.35F, 0.25F, 0.95F};
@@ -6599,26 +6476,7 @@ struct GameApplication::Impl {
 
         const ui::InventoryPaperDollLayout layout = buildInventoryPaperDollLayout();
         const ui::Rect& panel = layout.panel;
-        if (uiAssets.isLoaded()) {
-            const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-            uiRenderer.drawNineSlice(
-                uiAssets.inventoryPanelSlice(),
-                panel.x,
-                panel.y,
-                panel.width,
-                panel.height,
-                currentUiScale().dim(16.0F),
-                white);
-        } else {
-            const float panelColor[4] = {0.07F, 0.08F, 0.12F, 0.94F};
-            const float borderColor[4] = {0.75F, 0.6F, 0.2F, 1.0F};
-            uiRenderer.drawFilledRect(panel.x, panel.y, panel.width, panel.height, panelColor);
-            uiRenderer.drawOutlineRect(panel.x, panel.y, panel.width, panel.height, borderColor);
-        }
-        if (!drawOrnateWindow(panel)) {
-            const float plaqueGold[4] = {0.72F, 0.56F, 0.22F, 0.95F};
-            uiRenderer.drawOutlineRect(panel.x, panel.y, panel.width, panel.height, plaqueGold, 2.0F);
-        }
+        drawRpgPanel(panel);
         const float titleFill[4] = {0.42F, 0.08F, 0.09F, 0.92F};
         uiRenderer.drawFilledRect(
             panel.x + currentUiScale().dim(8.0F),
@@ -6627,20 +6485,14 @@ struct GameApplication::Impl {
             std::max(currentUiScale().dim(16.0F), layout.titleBandHeight - currentUiScale().dim(8.0F)),
             titleFill);
 
-        const float sidebarFill[4] = {0.08F, 0.06F, 0.045F, 0.94F};
+        const float sidebarFill[4] = {0.08F, 0.05F, 0.03F, 0.94F};
         uiRenderer.drawFilledRect(
             layout.statsSidebar.x,
             layout.statsSidebar.y,
             layout.statsSidebar.width,
             layout.statsSidebar.height,
             sidebarFill);
-        const float sidebarBorder[4] = {0.45F, 0.38F, 0.22F, 0.85F};
-        uiRenderer.drawOutlineRect(
-            layout.statsSidebar.x,
-            layout.statsSidebar.y,
-            layout.statsSidebar.width,
-            layout.statsSidebar.height,
-            sidebarBorder);
+        drawRpgFrame(layout.statsSidebar, currentUiScale().dim(4.0F));
 
         const float dividerColor[4] = {0.55F, 0.45F, 0.2F, 0.85F};
         uiRenderer.drawFilledRect(
@@ -6679,21 +6531,7 @@ struct GameApplication::Impl {
             const ui::Rect slot = layout.inventorySlotRect(index);
             const bool hovered = hoveredInventorySlot_.has_value() && *hoveredInventorySlot_ == index;
 
-            if (uiAssets.isLoaded()) {
-                const float tint[4] = {1.0F, 1.0F, 1.0F, hovered ? 1.0F : 0.92F};
-                uiRenderer.drawTexturedRect(
-                    hovered ? uiAssets.inventorySlotHover() : uiAssets.inventorySlot(),
-                    slot.x,
-                    slot.y,
-                    slot.width,
-                    slot.height,
-                    tint);
-            } else {
-                const float emptySlot[4] = {0.12F, 0.14F, 0.18F, 1.0F};
-                const float slotBorder[4] = {0.35F, 0.38F, 0.45F, 1.0F};
-                uiRenderer.drawFilledRect(slot.x, slot.y, slot.width, slot.height, emptySlot);
-                uiRenderer.drawOutlineRect(slot.x, slot.y, slot.width, slot.height, slotBorder);
-            }
+            drawItemWell(slot, hovered);
 
             if (!playerInventory.isSlotOccupied(index)) {
                 continue;
@@ -7088,23 +6926,16 @@ struct GameApplication::Impl {
 
         const ui::UiScale scale = currentUiScale();
         const ui::CharacterPanelLayout panel = ui::computeCharacterPanelLayout(scale);
-        const float frame[4] = {0.04F, 0.035F, 0.05F, 0.96F};
-        const float gold[4] = {0.72F, 0.52F, 0.18F, 1.0F};
-        uiRenderer.drawFilledRect(panel.panel.x, panel.panel.y, panel.panel.width, panel.panel.height, frame);
-        if (!drawOrnateWindow(panel.panel)) {
-            uiRenderer.drawOutlineRect(panel.panel.x, panel.panel.y, panel.panel.width, panel.panel.height, gold, 2.0F);
-        }
+        drawRpgPanel(panel.panel);
         const float titleFill[4] = {0.42F, 0.08F, 0.09F, 0.95F};
         uiRenderer.drawFilledRect(
             panel.titleBand.x, panel.titleBand.y, panel.titleBand.width, panel.titleBand.height, titleFill);
 
         const float parchment[4] = {0.62F, 0.48F, 0.30F, 0.96F};
-        const float ink[4] = {0.28F, 0.16F, 0.08F, 1.0F};
         if (!drawGeneratedFrame("parchment", panel.spellsPane)) {
             uiRenderer.drawFilledRect(
                 panel.spellsPane.x, panel.spellsPane.y, panel.spellsPane.width, panel.spellsPane.height, parchment);
-            uiRenderer.drawOutlineRect(
-                panel.spellsPane.x, panel.spellsPane.y, panel.spellsPane.width, panel.spellsPane.height, ink, 2.0F);
+            drawRpgFrame(panel.spellsPane, scale.dim(5.0F));
         }
 
         const float nebula[4] = {0.03F, 0.03F, 0.08F, 0.94F};
@@ -7141,11 +6972,8 @@ struct GameApplication::Impl {
                 const systems::SkillDefinition& skill = systems::skillDefinition(ids[index]);
                 const ui::Rect& icon = section.icons[static_cast<std::size_t>(index)];
                 const float fill[4] = {skill.colorR * 0.35F, skill.colorG * 0.35F, skill.colorB * 0.35F, 0.95F};
-                const float border[4] = {skill.colorR, skill.colorG, skill.colorB, 1.0F};
                 uiRenderer.drawFilledRect(icon.x, icon.y, icon.width, icon.height, fill);
-                if (!drawGeneratedFrame("hotbar_frame", icon)) {
-                    uiRenderer.drawOutlineRect(icon.x, icon.y, icon.width, icon.height, border, 2.0F);
-                }
+                drawRpgFrame(icon, scale.dim(4.0F));
                 const char* iconName = skillIconFrame(skill.id);
                 if (iconName != nullptr) {
                     const float inset = icon.width * 0.08F;
@@ -7263,10 +7091,7 @@ struct GameApplication::Impl {
         const ui::Rect& slot,
         const systems::ItemMetadata& item,
         bool hovered) const {
-        const float emptySlot[4] = {0.12F, 0.14F, 0.18F, 1.0F};
-        const float slotBorder[4] = {0.35F, 0.38F, 0.45F, hovered ? 1.0F : 0.85F};
-        uiRenderer.drawFilledRect(slot.x, slot.y, slot.width, slot.height, emptySlot);
-        uiRenderer.drawOutlineRect(slot.x, slot.y, slot.width, slot.height, slotBorder);
+        drawItemWell(slot, hovered);
 
         float iconFill[4]{};
         float iconBorder[4]{};
@@ -7295,58 +7120,25 @@ struct GameApplication::Impl {
         }
 
         const ui::TradeWindowLayout layout = ui::computeTradeWindowLayout(currentUiScale());
-        const float panelColor[4] = {0.06F, 0.07F, 0.1F, 0.93F};
-        const float borderPlayer[4] = {0.35F, 0.7F, 0.95F, 1.0F};
-        const float borderVendor[4] = {0.95F, 0.55F, 0.2F, 1.0F};
+        drawRpgPanel(layout.playerPanel);
+        drawRpgPanel(layout.vendorPanel);
+        drawRpgPanel(layout.servicesPanel);
 
-        uiRenderer.drawFilledRect(
-            layout.playerPanel.x,
-            layout.playerPanel.y,
-            layout.playerPanel.width,
-            layout.playerPanel.height,
-            panelColor);
-        uiRenderer.drawOutlineRect(
-            layout.playerPanel.x,
-            layout.playerPanel.y,
-            layout.playerPanel.width,
-            layout.playerPanel.height,
-            borderPlayer);
-        uiRenderer.drawFilledRect(
-            layout.vendorPanel.x,
-            layout.vendorPanel.y,
-            layout.vendorPanel.width,
-            layout.vendorPanel.height,
-            panelColor);
-        uiRenderer.drawOutlineRect(
-            layout.vendorPanel.x,
-            layout.vendorPanel.y,
-            layout.vendorPanel.width,
-            layout.vendorPanel.height,
-            borderVendor);
-
-        const float borderServices[4] = {0.75F, 0.45F, 0.95F, 1.0F};
-        uiRenderer.drawFilledRect(
-            layout.servicesPanel.x,
-            layout.servicesPanel.y,
-            layout.servicesPanel.width,
-            layout.servicesPanel.height,
-            panelColor);
-        uiRenderer.drawOutlineRect(
-            layout.servicesPanel.x,
-            layout.servicesPanel.y,
-            layout.servicesPanel.width,
-            layout.servicesPanel.height,
-            borderServices);
+        const float plaque[4] = {0.32F, 0.1F, 0.06F, 0.92F};
+        const auto titlePlaque = [&](const ui::Rect& title) {
+            uiRenderer.drawFilledRect(title.x, title.y, title.width, title.height, plaque);
+            drawRpgFrame(title, 3.0F);
+        };
+        titlePlaque(layout.playerTitle);
+        titlePlaque(layout.vendorTitle);
+        titlePlaque(layout.servicesTitle);
 
         for (int index = 0; index < playerInventory.capacity(); ++index) {
             const ui::Rect slot = layout.playerSlotRect(index);
             const bool hovered =
                 hoveredTradePlayerSlot_.has_value() && *hoveredTradePlayerSlot_ == index;
             if (!playerInventory.isSlotOccupied(index)) {
-                const float emptySlot[4] = {0.1F, 0.11F, 0.15F, 0.9F};
-                const float slotBorder[4] = {0.3F, 0.34F, 0.4F, hovered ? 1.0F : 0.7F};
-                uiRenderer.drawFilledRect(slot.x, slot.y, slot.width, slot.height, emptySlot);
-                uiRenderer.drawOutlineRect(slot.x, slot.y, slot.width, slot.height, slotBorder);
+                drawItemWell(slot, hovered);
                 continue;
             }
             drawTradeItemSlot(slot, *playerInventory.slotAt(index).item, hovered);
@@ -7357,10 +7149,7 @@ struct GameApplication::Impl {
             const bool hovered =
                 hoveredTradeVendorSlot_.has_value() && *hoveredTradeVendorSlot_ == index;
             if (!vendorInventory.isSlotOccupied(index)) {
-                const float emptySlot[4] = {0.1F, 0.11F, 0.15F, 0.9F};
-                const float slotBorder[4] = {0.4F, 0.28F, 0.18F, hovered ? 1.0F : 0.7F};
-                uiRenderer.drawFilledRect(slot.x, slot.y, slot.width, slot.height, emptySlot);
-                uiRenderer.drawOutlineRect(slot.x, slot.y, slot.width, slot.height, slotBorder);
+                drawItemWell(slot, hovered);
                 continue;
             }
             drawTradeItemSlot(slot, *vendorInventory.slotAt(index).item, hovered);
@@ -7373,16 +7162,7 @@ struct GameApplication::Impl {
             const bool hovered =
                 hoveredBlacksmithService_.has_value() && *hoveredBlacksmithService_ == serviceIndex;
             const bool unlocked = systems::isBlacksmithServiceUnlocked(service, unlocks);
-            const float lockedFill[4] = {0.14F, 0.12F, 0.12F, 0.95F};
-            const float unlockedFill[4] = {0.18F, 0.22F, 0.32F, hovered ? 1.0F : 0.92F};
-            const float border[4] = {unlocked ? 0.55F : 0.35F, unlocked ? 0.72F : 0.28F, 0.95F, 1.0F};
-            uiRenderer.drawFilledRect(
-                button.x,
-                button.y,
-                button.width,
-                button.height,
-                unlocked ? unlockedFill : lockedFill);
-            uiRenderer.drawOutlineRect(button.x, button.y, button.width, button.height, border);
+            drawRpgButton(button, hovered, unlocked);
         }
     }
 
@@ -7392,8 +7172,8 @@ struct GameApplication::Impl {
         }
 
         const ui::TradeWindowLayout layout = ui::computeTradeWindowLayout(currentUiScale());
-        const float labelColor[4] = {0.92F, 0.95F, 1.0F, 1.0F};
-        const float mutedColor[4] = {0.55F, 0.58F, 0.64F, 0.9F};
+        const float labelColor[4] = {0.96F, 0.9F, 0.72F, 1.0F};
+        const float mutedColor[4] = {0.78F, 0.68F, 0.48F, 0.95F};
         drawBoundedText(layout.playerTitle, "Sell from Backpack", layout.titleScale, labelColor);
         drawBoundedText(layout.vendorTitle, "Buy Wares", layout.titleScale, labelColor);
         drawBoundedText(layout.servicesTitle, "Forge Services", layout.titleScale, labelColor);
@@ -7413,20 +7193,23 @@ struct GameApplication::Impl {
                 systems::serviceDescriptor(service);
             const ui::Rect button = layout.serviceButtonRect(serviceIndex);
             const bool unlocked = systems::isBlacksmithServiceUnlocked(service, unlocks);
-            const float textColor[4] = {unlocked ? 0.92F : 0.55F, unlocked ? 0.95F : 0.5F, 1.0F, 1.0F};
-            drawBoundedText(button, descriptor.label, layout.serviceScale, textColor);
-            if (!unlocked) {
-                const ui::Rect hintRect{
-                    button.x,
-                    button.y + button.height * 0.55F,
-                    button.width,
-                    button.height * 0.4F};
-                drawBoundedText(
-                    hintRect,
-                    systems::blacksmithUnlockHint(service),
-                    layout.serviceScale * 0.82F,
-                    mutedColor);
-            }
+            const float padX = std::max(4.0F, button.width * 0.06F);
+            const float padY = std::max(3.0F, button.height * 0.08F);
+            const ui::Rect nameRect{
+                button.x + padX,
+                button.y + padY,
+                std::max(1.0F, button.width - padX * 2.0F),
+                std::max(1.0F, button.height * 0.42F)};
+            const ui::Rect hintRect{
+                button.x + padX,
+                nameRect.y + nameRect.height,
+                nameRect.width,
+                std::max(1.0F, button.y + button.height - padY - (nameRect.y + nameRect.height))};
+            const float textColor[4] = {unlocked ? 0.98F : 0.62F, unlocked ? 0.9F : 0.55F, unlocked ? 0.62F : 0.4F, 1.0F};
+            const std::string detail =
+                unlocked ? std::string(descriptor.shortHint) : systems::blacksmithUnlockHint(service);
+            drawBoundedText(nameRect, descriptor.label, layout.serviceScale, textColor);
+            drawBoundedText(hintRect, detail, layout.serviceScale * 0.82F, unlocked ? labelColor : mutedColor);
         }
 
         for (int index = 0; index < playerInventory.capacity(); ++index) {
@@ -7589,28 +7372,109 @@ struct GameApplication::Impl {
         return count;
     }
 
-    void drawGlobe(const ui::Rect& globe, const float ratio, const float liquid[4]) const {
-        const float centerX = globe.x + globe.width * 0.5F;
-        const float centerY = globe.y + globe.height * 0.5F;
-        const float radius = globe.width * 0.5F;
-        const float shadow[4] = {0.0F, 0.0F, 0.0F, 0.45F};
-        const float metal[4] = {0.28F, 0.2F, 0.1F, 0.95F};
-        const float well[4] = {0.02F, 0.015F, 0.02F, 0.98F};
-        uiRenderer.drawFilledCircle(centerX, centerY + radius * 0.06F, radius * 1.04F, shadow, 24);
-        uiRenderer.drawFilledCircle(centerX, centerY, radius, metal, 28);
-        uiRenderer.drawFilledCircle(centerX, centerY, radius * ui::kGlobeRingInnerRadiusFraction, well, 28);
-        uiRenderer.drawCircleFill(
-            centerX,
-            centerY,
-            radius * ui::kGlobeLiquidRadiusFraction,
-            ratio,
-            liquid,
-            28,
-            spriteAnimTime_ * 3.2F,
-            radius * ui::kGlobeWaveAmplitudeFraction);
-        const float sheen[4] = {1.0F, 0.95F, 0.85F, 0.28F};
-        uiRenderer.drawFilledCircle(centerX - radius * 0.22F, centerY - radius * 0.28F, radius * 0.12F, sheen, 12);
-        drawGeneratedFrame("globe_ring", globe);
+    /// Shared metal / gold filigree. Border strips only, so icons underneath stay visible.
+    void drawRpgFrame(const ui::Rect& rect, const float requestedLip = 0.0F) const {
+        if (rect.width < 6.0F || rect.height < 6.0F) {
+            return;
+        }
+        const float shortest = std::min(rect.width, rect.height);
+        float lip = requestedLip > 0.5F ? requestedLip : shortest * 0.11F;
+        lip = std::clamp(lip, 3.0F, currentUiScale().dim(12.0F));
+        lip = std::min(lip, shortest * 0.28F);
+        const float goldW = std::max(1.5F, lip * 0.36F);
+        const float dark[4] = {0.08F, 0.045F, 0.025F, 1.0F};
+        const float gold[4] = {0.86F, 0.62F, 0.22F, 1.0F};
+        const float hi[4] = {0.98F, 0.88F, 0.52F, 1.0F};
+        const float bronze[4] = {0.42F, 0.26F, 0.1F, 1.0F};
+
+        const auto band = [&](const float x, const float y, const float w, const float h, const float color[4]) {
+            if (w > 0.4F && h > 0.4F) {
+                uiRenderer.drawFilledRect(x, y, w, h, color);
+            }
+        };
+        band(rect.x, rect.y, rect.width, lip, dark);
+        band(rect.x, rect.y + rect.height - lip, rect.width, lip, dark);
+        band(rect.x, rect.y, lip, rect.height, dark);
+        band(rect.x + rect.width - lip, rect.y, lip, rect.height, dark);
+        band(rect.x + 1.0F, rect.y + 1.0F, rect.width - 2.0F, goldW, hi);
+        band(rect.x + 1.0F, rect.y + rect.height - 1.0F - goldW, rect.width - 2.0F, goldW, gold);
+        band(rect.x + 1.0F, rect.y, goldW, rect.height, hi);
+        band(rect.x + rect.width - 1.0F - goldW, rect.y, goldW, rect.height, gold);
+
+        const float inset = std::max(lip - 1.0F, goldW + 1.0F);
+        band(rect.x + inset, rect.y + inset, rect.width - inset * 2.0F, 1.6F, gold);
+        band(rect.x + inset, rect.y + rect.height - inset - 1.6F, rect.width - inset * 2.0F, 1.6F, bronze);
+        band(rect.x + inset, rect.y + inset, 1.6F, rect.height - inset * 2.0F, gold);
+        band(rect.x + rect.width - inset - 1.6F, rect.y + inset, 1.6F, rect.height - inset * 2.0F, bronze);
+
+        if (shortest < 16.0F) {
+            return;
+        }
+        const float stud = std::clamp(lip * 0.42F, 2.5F, 6.0F);
+        const float corners[4][2] = {
+            {rect.x + lip * 0.35F, rect.y + lip * 0.35F},
+            {rect.x + rect.width - lip * 0.35F, rect.y + lip * 0.35F},
+            {rect.x + lip * 0.35F, rect.y + rect.height - lip * 0.35F},
+            {rect.x + rect.width - lip * 0.35F, rect.y + rect.height - lip * 0.35F},
+        };
+        for (const auto& corner : corners) {
+            uiRenderer.drawFilledCircle(corner[0], corner[1], stud, hi, 8);
+            uiRenderer.drawFilledCircle(corner[0], corner[1], stud * 0.45F, bronze, 6);
+        }
+    }
+
+    void drawRpgPanel(const ui::Rect& rect) const {
+        if (rect.width < 8.0F || rect.height < 8.0F) {
+            return;
+        }
+        const float shadow[4] = {0.0F, 0.0F, 0.0F, 0.42F};
+        uiRenderer.drawFilledRect(rect.x + 3.0F, rect.y + 4.0F, rect.width, rect.height, shadow);
+        const float wood[4] = {0.11F, 0.065F, 0.038F, 0.96F};
+        uiRenderer.drawFilledRect(rect.x, rect.y, rect.width, rect.height, wood);
+        const float parchment[4] = {0.18F, 0.11F, 0.06F, 0.42F};
+        const float pad = std::clamp(std::min(rect.width, rect.height) * 0.04F, 6.0F, 18.0F);
+        if (rect.width > pad * 2.5F && rect.height > pad * 2.5F) {
+            uiRenderer.drawFilledRect(
+                rect.x + pad, rect.y + pad, rect.width - pad * 2.0F, rect.height - pad * 2.0F, parchment);
+        }
+        const float grain[4] = {0.28F, 0.16F, 0.07F, 0.18F};
+        uiRenderer.drawFilledRect(rect.x + pad, rect.y + rect.height * 0.22F, std::max(1.0F, rect.width - pad * 2.0F), std::max(2.0F, rect.height * 0.015F), grain);
+        drawRpgFrame(rect);
+    }
+
+    void drawRpgButton(const ui::Rect& rect, const bool hovered, const bool enabled) const {
+        const float locked[4] = {0.10F, 0.08F, 0.07F, 0.94F};
+        const float ready[4] = {0.20F, 0.11F, 0.055F, 0.96F};
+        const float hot[4] = {0.34F, 0.18F, 0.07F, 1.0F};
+        const float* fill = !enabled ? locked : (hovered ? hot : ready);
+        uiRenderer.drawFilledRect(rect.x, rect.y, rect.width, rect.height, fill);
+        if (enabled) {
+            const float sheen[4] = {1.0F, 0.86F, 0.55F, hovered ? 0.16F : 0.08F};
+            uiRenderer.drawFilledRect(rect.x, rect.y, rect.width, std::max(2.0F, rect.height * 0.18F), sheen);
+        }
+        drawRpgFrame(rect, currentUiScale().dim(4.0F));
+    }
+
+    void drawVitalBar(const ui::Rect& bar, const float ratio, const float liquid[4]) const {
+        const float well[4] = {0.03F, 0.018F, 0.015F, 0.98F};
+        uiRenderer.drawFilledRect(bar.x, bar.y, bar.width, bar.height, well);
+        const float lip = std::min(bar.height * 0.22F, currentUiScale().dim(5.0F));
+        const float innerW = std::max(0.0F, bar.width - lip * 2.0F);
+        const float innerH = std::max(0.0F, bar.height - lip * 2.0F);
+        const float clamped = std::clamp(ratio, 0.0F, 1.0F);
+        if (clamped > 0.001F && innerW > 1.0F && innerH > 1.0F) {
+            uiRenderer.drawFilledRect(bar.x + lip, bar.y + lip, innerW * clamped, innerH, liquid);
+            const float sheen[4] = {1.0F, 0.92F, 0.78F, 0.30F};
+            uiRenderer.drawFilledRect(
+                bar.x + lip, bar.y + lip, innerW * clamped, std::max(1.0F, innerH * 0.32F), sheen);
+        }
+        drawRpgFrame(bar, std::max(3.0F, lip));
+    }
+
+    void drawItemWell(const ui::Rect& slot, const bool hovered) const {
+        const float empty[4] = {hovered ? 0.16F : 0.07F, hovered ? 0.10F : 0.045F, 0.03F, 0.96F};
+        uiRenderer.drawFilledRect(slot.x, slot.y, slot.width, slot.height, empty);
+        drawRpgFrame(slot, std::max(3.0F, currentUiScale().dim(3.5F)));
     }
 
     void drawHudVignette(const ui::HudConsoleLayout& console) const {
@@ -7631,65 +7495,52 @@ struct GameApplication::Impl {
     void renderHudConsole() const {
         const ui::UiScale scale = currentUiScale();
         const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(scale);
-        const float trim[4] = {0.78F, 0.6F, 0.24F, 1.0F};
         drawHudVignette(console);
 
         const systems::EffectiveCharacterStats effective = effectiveCharacterStats();
         const int maxHealth = std::max(effective.maxHealth, 1);
         const float healthRatio = static_cast<float>(playerCurrentHealth_) / static_cast<float>(maxHealth);
         const float manaRatio = skillBar_.manaRatio();
-        const float healthLiquid[4] = {0.78F, 0.06F, 0.08F, 0.96F};
-        const float manaLiquid[4] = {0.12F, 0.28F, 0.92F, 0.96F};
-        drawGlobe(console.healthGlobe, healthRatio, healthLiquid);
-        drawGlobe(console.manaGlobe, manaRatio, manaLiquid);
+        const float healthLiquid[4] = {0.72F, 0.08F, 0.1F, 0.98F};
+        const float manaLiquid[4] = {0.16F, 0.32F, 0.86F, 0.98F};
+        drawVitalBar(console.healthBar, healthRatio, healthLiquid);
+        drawVitalBar(console.manaBar, manaRatio, manaLiquid);
 
-        const float badge[4] = {0.08F, 0.02F, 0.02F, 0.82F};
-        const float badgeRim[4] = {0.85F, 0.62F, 0.2F, 0.95F};
-        const ui::Rect badgePlate{
-            console.levelBadge.x,
-            console.levelBadge.y - scale.dim(2.0F),
-            console.levelBadge.width,
-            console.levelBadge.height + scale.dim(4.0F)};
-        if (!drawGeneratedFrame("level_badge", badgePlate)) {
-            uiRenderer.drawFilledRect(
-                console.levelBadge.x, console.levelBadge.y, console.levelBadge.width, console.levelBadge.height, badge);
-            uiRenderer.drawOutlineRect(
-                console.levelBadge.x, console.levelBadge.y, console.levelBadge.width, console.levelBadge.height, badgeRim, 1.0F);
-        }
+        const float badge[4] = {0.28F, 0.08F, 0.06F, 0.96F};
+        uiRenderer.drawFilledRect(
+            console.levelBadge.x, console.levelBadge.y, console.levelBadge.width, console.levelBadge.height, badge);
+        drawRpgFrame(console.levelBadge, scale.dim(4.0F));
 
         const ui::CharacterScreenData& base = overlayState.characterScreen();
         const int nextXp = std::max(base.experienceToNextLevel, 1);
         const float xpRatio = std::clamp(static_cast<float>(base.experience) / static_cast<float>(nextXp), 0.0F, 1.0F);
-        const float xpEmpty[4] = {0.08F, 0.07F, 0.05F, 0.9F};
-        const float xpFill[4] = {0.92F, 0.72F, 0.2F, 1.0F};
-        const ui::Rect xpTrack{
-            console.xpBar.x,
-            console.xpBar.y - scale.dim(3.0F),
-            console.xpBar.width,
-            console.xpBar.height + scale.dim(6.0F)};
-        drawGeneratedFrame("xp_track", xpTrack);
+        const float xpEmpty[4] = {0.08F, 0.05F, 0.03F, 0.94F};
+        const float xpFill[4] = {0.92F, 0.72F, 0.22F, 1.0F};
         uiRenderer.drawFilledRect(console.xpBar.x, console.xpBar.y, console.xpBar.width, console.xpBar.height, xpEmpty);
         if (xpRatio > 0.0F) {
             uiRenderer.drawFilledRect(
                 console.xpBar.x, console.xpBar.y, console.xpBar.width * xpRatio, console.xpBar.height, xpFill);
         }
+        drawRpgFrame(console.xpBar, std::max(2.0F, console.xpBar.height * 0.22F));
 
         const float cooldown[4] = {0.02F, 0.01F, 0.01F, 0.72F};
         const float keyBand = scale.dim(ui::kHudHotkeyBand);
+        const float slotLip = scale.dim(6.0F);
         for (int slot = 0; slot < ui::HudConsoleLayout::kSkillSlotCount; ++slot) {
             const ui::Rect& bounds = console.skillSlots[static_cast<std::size_t>(slot)];
-            drawGeneratedFrame("hotbar_frame", bounds);
-            if (!generatedUi_.isLoaded()) {
-                uiRenderer.drawOutlineRect(bounds.x, bounds.y, bounds.width, bounds.height, trim, 2.0F);
-            }
             const systems::SkillDefinition& skill = systems::skillDefinition(skillBar_.slot(slot));
+            const float well[4] = {0.05F, 0.03F, 0.02F, 0.94F};
+            uiRenderer.drawFilledRect(bounds.x, bounds.y, bounds.width, bounds.height, well);
+            drawRpgFrame(bounds, slotLip);
             const ui::Rect glyph = ui::hudGlyphRect(bounds, keyBand);
-            const float pad = glyph.width * 0.08F;
-            const float fill[4] = {skill.colorR * 0.55F, skill.colorG * 0.55F, skill.colorB * 0.55F, 0.92F};
+            const float pad = std::max(glyph.width * 0.1F, slotLip * 0.35F);
+            const float fill[4] = {skill.colorR * 0.45F, skill.colorG * 0.45F, skill.colorB * 0.45F, 0.9F};
             uiRenderer.drawFilledRect(glyph.x + pad, glyph.y + pad, glyph.width - pad * 2.0F, glyph.height - pad * 2.0F, fill);
             const char* iconName = skillIconFrame(skill.id);
             if (iconName != nullptr) {
-                drawGeneratedFrame(iconName, glyph);
+                const ui::Rect icon{
+                    glyph.x + pad, glyph.y + pad, glyph.width - pad * 2.0F, glyph.height - pad * 2.0F};
+                drawGeneratedFrame(iconName, icon);
             }
             const float ratio = skillBar_.cooldownRatio(slot);
             if (ratio > 0.0F) {
@@ -7704,10 +7555,9 @@ struct GameApplication::Impl {
 
         int beltIndex = 0;
         for (const ui::Rect& bounds : console.beltSlots) {
-            drawGeneratedFrame("hotbar_frame", bounds);
-            if (!generatedUi_.isLoaded()) {
-                uiRenderer.drawOutlineRect(bounds.x, bounds.y, bounds.width, bounds.height, trim, 2.0F);
-            }
+            const float well[4] = {0.05F, 0.03F, 0.02F, 0.94F};
+            uiRenderer.drawFilledRect(bounds.x, bounds.y, bounds.width, bounds.height, well);
+            drawRpgFrame(bounds, slotLip);
             if (beltIndex == 0) {
                 const ui::Rect vialRect{
                     bounds.x + bounds.width * 0.16F,
@@ -7729,17 +7579,21 @@ struct GameApplication::Impl {
 
         for (int index = 0; index < ui::HudConsoleLayout::kMenuIconCount; ++index) {
             const ui::Rect& icon = console.menuIcons[static_cast<std::size_t>(index)];
-            if (drawGeneratedFrame(menuIconFrame(index), icon)) {
-                continue;
-            }
             const bool hovered = hoveredHudMenu_ == index;
-            const float cx = icon.x + icon.width * 0.5F;
-            const float cy = icon.y + icon.height * 0.5F;
-            const float radius = icon.width * 0.5F;
-            const float rim[4] = {0.82F, 0.62F, 0.24F, hovered ? 1.0F : 0.88F};
-            const float core[4] = {hovered ? 0.22F : 0.08F, hovered ? 0.14F : 0.05F, 0.04F, 0.94F};
-            uiRenderer.drawFilledCircle(cx, cy, radius, rim, 18);
-            uiRenderer.drawFilledCircle(cx, cy, radius * 0.78F, core, 18);
+            const float core[4] = {hovered ? 0.22F : 0.08F, hovered ? 0.12F : 0.045F, 0.03F, 0.96F};
+            uiRenderer.drawFilledRect(icon.x, icon.y, icon.width, icon.height, core);
+            drawRpgFrame(icon, scale.dim(4.0F));
+            const float pad = icon.width * 0.16F;
+            const ui::Rect glyph{icon.x + pad, icon.y + pad, icon.width - pad * 2.0F, icon.height - pad * 2.0F};
+            if (!drawGeneratedFrame(menuIconFrame(index), glyph)) {
+                const float rim[4] = {0.82F, 0.62F, 0.24F, hovered ? 1.0F : 0.7F};
+                uiRenderer.drawFilledCircle(
+                    glyph.x + glyph.width * 0.5F,
+                    glyph.y + glyph.height * 0.5F,
+                    std::min(glyph.width, glyph.height) * 0.36F,
+                    rim,
+                    12);
+            }
         }
     }
 
@@ -7759,12 +7613,13 @@ struct GameApplication::Impl {
             textRenderer.drawTextCentered(bounds, value.c_str(), textScale, text);
         };
 
+        const systems::EffectiveCharacterStats effective = effectiveCharacterStats();
         std::ostringstream health;
-        health << playerCurrentHealth_;
+        health << playerCurrentHealth_ << " / " << std::max(effective.maxHealth, 1);
         drawFittedCentered(console.healthLabel, health.str(), console.labelScale);
 
         std::ostringstream mana;
-        mana << skillBar_.mana();
+        mana << skillBar_.mana() << " / " << skillBar_.maxMana();
         drawFittedCentered(console.manaLabel, mana.str(), console.labelScale * 0.9F);
 
         const ui::CharacterScreenData& base = overlayState.characterScreen();
