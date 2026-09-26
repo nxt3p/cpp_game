@@ -62,7 +62,10 @@ struct InventoryPaperDollLayout {
 struct CharacterPanelLayout {
     Rect panel{};
     Rect titleBand{};
+    Rect closeButton{};
     Rect portrait{};
+    Rect hpLabel{};
+    Rect soulLabel{};
     Rect xpBar{};
     Rect hpBar{};
     Rect goldLabel{};
@@ -130,6 +133,48 @@ struct HudChromeLayout {
     Rect statusHud{};
     Rect messageStrip{};
 };
+
+/// Static town plaza. Buildings are separate sprites, not a three-column strip.
+/// `road` is the Start Adventure control on the right. `exitButton` dismisses a building UI.
+struct TownSceneLayout {
+    Rect blacksmith{};
+    Rect tavern{};
+    Rect healer{};
+    Rect road{};
+    Rect notice{};
+    Rect exitButton{};
+    Rect servicePanel{};
+    Rect serviceTitle{};
+    Rect serviceBody{};
+    Rect serviceAction{};
+    Rect serviceClose{};
+};
+
+[[nodiscard]] TownSceneLayout computeTownSceneLayout(const UiScale& scale) noexcept;
+
+/// 16:9 stage the plaza backdrop and building anchors share. Full window when the
+/// framebuffer is already 16:9; otherwise the largest 16:9 letterbox.
+[[nodiscard]] Rect townStageRect(const UiScale& scale) noexcept;
+
+[[nodiscard]] Rect townBuildingRect(const TownSceneLayout& layout, int buildingIndex) noexcept;
+
+/// 0 blacksmith, 1 tavern, 2 chapel, 3 road, or -1 when the point misses every hotspot.
+[[nodiscard]] int townHotspotIndexAt(const TownSceneLayout& layout, float x, float y) noexcept;
+
+/// Building painting sits above a short caption so the label does not slice the sprite.
+[[nodiscard]] Rect townBuildingArtRect(const Rect& hotspot) noexcept;
+[[nodiscard]] Rect townBuildingCaptionRect(const Rect& hotspot) noexcept;
+
+/// Fits the opaque pixel box of a plate into `art`, bottom-aligned and centered.
+/// `v0`/`v1` are top-left image fractions (0 at the top of the PNG).
+[[nodiscard]] Rect townOpaqueSpriteRect(
+    const Rect& art,
+    float textureWidth,
+    float textureHeight,
+    float u0,
+    float v0,
+    float u1,
+    float v1) noexcept;
 
 enum class SettingsRowKind : std::uint8_t { Cycle, Slider };
 

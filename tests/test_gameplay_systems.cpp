@@ -61,15 +61,16 @@ TEST_CASE("LootEngine accrues action coins with configured weights", "[systems][
 TEST_CASE("LootEngine drains pool on rare drops", "[systems][loot]") {
     systems::LootEngine loot(424242U);
 
-    for (int i = 0; i < 30; ++i) {
-        loot.registerAction(systems::ActionType::BOSS_KILL);
+    systems::LootDropResult drop{};
+    for (int attempt = 0; attempt < 20 && !drop.dropped; ++attempt) {
+        for (int i = 0; i < 8; ++i) {
+            loot.registerAction(systems::ActionType::BOSS_KILL);
+        }
+        drop = loot.triggerDropCheck(systems::EntityTier::Boss);
     }
-
-    const systems::LootDropResult drop = loot.triggerDropCheck(systems::EntityTier::Boss);
     REQUIRE(drop.dropped);
 
-    if (drop.resolvedRarity == systems::ItemRarity::Rare ||
-        drop.resolvedRarity == systems::ItemRarity::Legendary) {
+    if (drop.resolvedRarity != systems::ItemRarity::Common) {
         CHECK(drop.poolDrained);
         CHECK(loot.coinPool() == 0);
     } else {

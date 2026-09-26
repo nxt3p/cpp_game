@@ -9,16 +9,16 @@
 namespace gameplay {
 
 struct MobSpawnSettings {
-    int maxMobs{8};
-    float minSpawnIntervalSeconds{6.0F};
-    float maxSpawnIntervalSeconds{14.0F};
-    float minSpawnDistanceFromPlayer{18.0F};
-    float mobWanderSpeed{3.0F};
-    float bossWanderSpeed{1.2F};
+    int maxMobs{16};
+    float minSpawnIntervalSeconds{3.2F};
+    float maxSpawnIntervalSeconds{7.5F};
+    float minSpawnDistanceFromPlayer{12.0F};
+    float mobWanderSpeed{3.4F};
+    float bossWanderSpeed{1.45F};
     float boundsMargin{4.0F};
-    float aggroRadius{16.0F};
-    float deaggroRadius{24.0F};
-    float chaseSpeedMultiplier{1.65F};
+    float aggroRadius{22.0F};
+    float deaggroRadius{32.0F};
+    float chaseSpeedMultiplier{1.9F};
 };
 
 class MobController {

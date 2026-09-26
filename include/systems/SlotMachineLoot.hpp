@@ -60,6 +60,42 @@ struct LootSpinResult {
     std::vector<LootPrize> prizes{};
 };
 
+/// Tavern mystery gamble. Mythical is fixed at 1/10000 and is not a combat drop.
+struct TavernGambleOdds {
+    float nothing{0.0F};
+    float gold{0.0F};
+    float common{0.0F};
+    float magic{0.0F};
+    float rare{0.0F};
+    float legendary{0.0F};
+    float unique{0.0F};
+    float mythical{0.0F};
+};
+
+enum class TavernPrize : std::uint8_t {
+    Mythical,
+    Unique,
+    Legendary,
+    Rare,
+    Magic,
+    Common,
+    Gold,
+    Nothing
+};
+
+/// Maps a unit roll onto the tavern table. Mythical occupies [0, odds.mythical).
+[[nodiscard]] TavernPrize tavernPrizeForRoll(float roll, const TavernGambleOdds& odds) noexcept;
+
+struct TavernGambleResult {
+    bool paid{false};
+    bool grantedItem{false};
+    int goldSpent{0};
+    int goldAwarded{0};
+    ItemRarity rarity{ItemRarity::Common};
+    std::optional<ItemMetadata> item{};
+    std::string message;
+};
+
 /// Aggregate counters for balancing harnesses.
 struct LootTelemetry {
     int spins{0};
@@ -109,6 +145,26 @@ public:
 
     [[nodiscard]] LootReelOdds oddsFor(EntityTier tier) const noexcept;
 
+    /// Combat reels never pay mythical gear.
+    [[nodiscard]] float combatMythicalChance() const noexcept { return 0.0F; }
+
+    /// Fraction of a jackpot that is unique instead of legendary. Mythical is not on this reel.
+    [[nodiscard]] float jackpotUniqueSlice(EntityTier tier) const noexcept;
+
+    /// Legendary chance for the current coin pool and pity: jackpot odds times (1 - unique slice).
+    /// Zero the pool and pity counter to read the base table (bosses sit near one in seven).
+    [[nodiscard]] float legendaryChance(EntityTier tier) const noexcept;
+
+    [[nodiscard]] TavernGambleOdds tavernOdds() const noexcept;
+
+    /// Dry spins raise tavern legendary odds only, and only up to +0.02. Mythical stays 1/10000.
+    void setTavernPitySpins(int drySpins) noexcept;
+
+    TavernGambleResult gambleTavern(int& playerGold);
+
+    static constexpr float kTavernMythicalChance = 0.0001F;
+    static constexpr int kTavernSpinCost = 25;
+
     LootSpinResult spin(EntityTier tier);
 
     [[nodiscard]] const LootTelemetry& telemetry() const noexcept { return telemetry_; }
@@ -144,6 +200,7 @@ private:
     float lootTierBonus_{0.0F};
     LootCeiling lootCeiling_{LootCeiling::Unique};
     int pityCounter_{0};
+    int tavernDrySpins_{0};
     LootTelemetry telemetry_{};
 };
 

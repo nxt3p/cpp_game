@@ -117,10 +117,10 @@ int mobMeleeDamage(
     int baseDamage = 0;
     switch (kind) {
     case gameplay::EntityKind::ENEMY_MOB:
-        baseDamage = 12;
+        baseDamage = 18;
         break;
     case gameplay::EntityKind::ENEMY_BOSS:
-        baseDamage = 28;
+        baseDamage = 42;
         break;
     default:
         return 0;

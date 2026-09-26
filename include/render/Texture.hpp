@@ -15,6 +15,7 @@ public:
     Texture& operator=(Texture&& other) noexcept;
 
     [[nodiscard]] bool loadFromFile(const std::string& path, bool pixelArtFiltering = true);
+    [[nodiscard]] bool uploadRgba(int width, int height, const unsigned char* pixels, bool pixelArtFiltering = true);
     [[nodiscard]] bool isValid() const noexcept { return textureId_ != 0U; }
     [[nodiscard]] int width() const noexcept { return width_; }
     [[nodiscard]] int height() const noexcept { return height_; }

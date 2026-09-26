@@ -8,9 +8,11 @@ namespace systems {
 
 enum class ItemRarity : std::uint8_t {
     Common,
+    Magic,
     Rare,
     Legendary,
-    Unique
+    Unique,
+    Mythical
 };
 
 enum class ActionType : std::uint8_t {

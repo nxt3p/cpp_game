@@ -3,6 +3,7 @@
 
 #include <cmath>
 
+#include "game/PointerEdge.hpp"
 #include "ui/GlobeFill.hpp"
 #include "ui/HudConsoleLayout.hpp"
 #include "ui/LootPresentation.hpp"
@@ -58,6 +59,12 @@ TEST_CASE("Character panel layout reserves non-overlapping level up buttons", "[
     CHECK(layout.spellsPane.contains(
         board.basic.icons[0].x + board.basic.icons[0].width * 0.5F,
         board.basic.icons[0].y + board.basic.icons[0].height * 0.5F));
+    CHECK(layout.hpBar.y >= layout.hpLabel.y + layout.hpLabel.height - 0.5F);
+    CHECK(layout.xpBar.y >= layout.soulLabel.y + layout.soulLabel.height - 0.5F);
+    CHECK(layout.closeButton.width > 20.0F);
+    CHECK(layout.panel.contains(
+        layout.closeButton.x + layout.closeButton.width * 0.5F,
+        layout.closeButton.y + layout.closeButton.height * 0.5F));
 }
 
 TEST_CASE("Paper doll inventory layout exposes fifteen equipment slots", "[ui][layout]") {
@@ -175,6 +182,28 @@ TEST_CASE("Ui interaction registry resolves slots and blocking regions", "[ui][i
     CHECK_FALSE(registry.blocksWorldInput(2.0F, 2.0F));
 }
 
+TEST_CASE("Held menu clicks do not toggle again on the next frame", "[ui][input]") {
+    const game::PointerEdgeState opened = game::advancePointerEdge(true, true, false);
+    CHECK(opened.pressed);
+    CHECK_FALSE(opened.released);
+    CHECK(opened.mouseWasDown);
+
+    const game::PointerEdgeState held = game::advancePointerEdge(false, true, opened.mouseWasDown);
+    CHECK_FALSE(held.pressed);
+    CHECK_FALSE(held.released);
+    CHECK(held.mouseWasDown);
+
+    const game::PointerEdgeState letGo = game::advancePointerEdge(false, false, held.mouseWasDown);
+    CHECK_FALSE(letGo.pressed);
+    CHECK(letGo.released);
+    CHECK_FALSE(letGo.mouseWasDown);
+
+    const game::PointerEdgeState synthetic = game::advancePointerEdge(true, false, false);
+    CHECK(synthetic.pressed);
+    CHECK(synthetic.released);
+    CHECK_FALSE(synthetic.mouseWasDown);
+}
+
 TEST_CASE("Grouped numbers and stacked loot beams", "[ui][loot]") {
     CHECK(ui::formatGroupedNumber(39007431) == "39,007,431");
     CHECK(ui::formatGroupedNumber(0) == "0");
@@ -193,6 +222,33 @@ TEST_CASE("Grouped numbers and stacked loot beams", "[ui][loot]") {
     CHECK(ui::LootPresentation::beamHeight(2.2F) > ui::LootPresentation::beamHeight(0.55F));
     loot.update(7.0F);
     CHECK(loot.beacons().empty());
+}
+
+TEST_CASE("Blacksmith panels keep forge buttons readable above the HUD", "[ui][trade]") {
+    const ui::UiScale scale(1280, 720);
+    const ui::TradeWindowLayout trade = ui::computeTradeWindowLayout(scale);
+    const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(scale);
+
+    CHECK(trade.playerPanel.x + trade.playerPanel.width < trade.vendorPanel.x);
+    CHECK(trade.servicesPanel.y + trade.servicesPanel.height <= trade.playerPanel.y + 0.5F);
+    CHECK(trade.playerPanel.y + trade.playerPanel.height <= console.panel.y + 0.5F);
+    CHECK(trade.servicesButtonHeight >= 48.0F);
+    const ui::InventoryPaperDollLayout bag = ui::computeInventoryPaperDollLayout(scale, 6, 4);
+    const ui::Rect bagSlot = bag.inventorySlotRect(0);
+    CHECK(trade.servicesPanel.y + trade.servicesPanel.height <= bagSlot.y + 0.5F);
+
+    ui::Rect previous = trade.serviceButtonRect(0);
+    CHECK(previous.height == Catch::Approx(trade.servicesButtonHeight).margin(0.5F));
+    CHECK(trade.servicesPanel.contains(previous.x + 1.0F, previous.y + 1.0F));
+    for (int index = 1; index < ui::TradeWindowLayout::kServiceCount; ++index) {
+        const ui::Rect button = trade.serviceButtonRect(index);
+        CHECK(button.x >= previous.x + previous.width - 0.5F);
+        CHECK(button.y + button.height <= trade.servicesPanel.y + trade.servicesPanel.height + 0.5F);
+        previous = button;
+    }
+
+    const ui::Rect lastSlot = trade.playerSlotRect(trade.playerColumns * trade.playerRows - 1);
+    CHECK(lastSlot.y + lastSlot.height <= trade.playerPanel.y + trade.playerPanel.height + 0.5F);
 }
 
 TEST_CASE("Item compare cards sit side by side on screen", "[ui][tooltip]") {

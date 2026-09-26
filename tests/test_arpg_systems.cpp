@@ -172,20 +172,29 @@ TEST_CASE("ParticleSystem simulates, expires and recycles within capacity", "[ar
     CHECK(particles.aliveCount() == 0);
 }
 
-TEST_CASE("Hud console layout keeps globes, slots and strip inside the screen", "[arpg][hud][ui]") {
-    for (const auto& [width, height] : {std::pair{1280, 720}, std::pair{1920, 1080}, std::pair{3840, 2160}}) {
-        const ui::UiScale scale(width, height);
+TEST_CASE("Hud console layout keeps bars, slots and strip inside the screen", "[arpg][hud][ui]") {
+    for (const auto& [width, height] : {std::pair{1280, 720}, std::pair{1920, 1080}, std::pair{3840, 2160}, std::pair{390, 844}}) {
+        const ui::UiScale scale(width, height, width < 900 ? ui::UiPlatformKind::Mobile : ui::UiPlatformKind::Desktop);
         const ui::HudConsoleLayout console = ui::computeHudConsoleLayout(scale);
         const float screenW = static_cast<float>(width);
         const float screenH = static_cast<float>(height);
 
         CHECK(console.panel.y + console.panel.height == Catch::Approx(screenH).margin(0.01F));
         CHECK(console.panel.width == Catch::Approx(screenW));
-        CHECK(console.healthGlobe.x >= 0.0F);
-        CHECK(console.manaGlobe.x > console.healthGlobe.x);
-        CHECK(console.manaGlobe.x < console.healthGlobe.x + console.healthGlobe.width);
-        CHECK(console.healthGlobe.x + console.healthGlobe.width < console.skillSlots[0].x);
-        CHECK(console.skillSlots[0].x >= console.manaGlobe.x + console.manaGlobe.width - 1.0F);
+        CHECK(console.healthBar.x >= 0.0F);
+        CHECK(console.healthBar.width > 40.0F);
+        CHECK(console.manaBar.x == Catch::Approx(console.healthBar.x).margin(0.5F));
+        CHECK(console.manaBar.y >= console.healthBar.y + console.healthBar.height - 0.5F);
+        CHECK(console.healthBar.x + console.healthBar.width < console.skillSlots[0].x);
+        CHECK(console.manaBar.x + console.manaBar.width < console.skillSlots[0].x);
+        CHECK(console.levelBadge.x + console.levelBadge.width <= console.healthBar.x + 0.5F);
+        CHECK(console.levelBadge.y + console.levelBadge.height <= console.panel.y + console.panel.height + 0.5F);
+        CHECK(console.healthBar.y >= console.panel.y);
+        CHECK(console.healthLabel.y + console.healthLabel.height <= console.healthBar.y + 0.5F);
+        CHECK(console.manaLabel.y + console.manaLabel.height <= console.manaBar.y + 0.5F);
+        CHECK(console.soulsLabel.y + 0.5F >= console.manaBar.y + console.manaBar.height);
+        CHECK(console.soulsLabel.y + console.soulsLabel.height <= console.panel.y + console.panel.height + 0.5F);
+        CHECK(console.manaBar.y + console.manaBar.height <= console.panel.y + console.panel.height + 0.5F);
         CHECK(console.menuIcons[0].x > console.beltSlots[3].x + console.beltSlots[3].width - 1.0F);
         CHECK(console.menuIcons[ui::HudConsoleLayout::kMenuIconCount - 1].x +
                   console.menuIcons[ui::HudConsoleLayout::kMenuIconCount - 1].width <=
@@ -202,9 +211,11 @@ TEST_CASE("Hud console layout keeps globes, slots and strip inside the screen", 
         const ui::HudChromeLayout chrome = ui::computeHudChromeLayout(scale);
         CHECK(chrome.statusHud.y == Catch::Approx(console.panel.y));
 
-        const ui::MinimapWidgetLayout minimap = ui::computeMinimapWidgetLayout(
-            scale, ui::ScreenAnchor::BottomRight, 12.0F, 12.0F, 220.0F);
-        CHECK(minimap.frame.y + minimap.frame.height <= console.panel.y + 0.01F);
+        if (width >= 1280) {
+            const ui::MinimapWidgetLayout minimap = ui::computeMinimapWidgetLayout(
+                scale, ui::ScreenAnchor::BottomRight, 12.0F, 12.0F, 220.0F);
+            CHECK(minimap.frame.y + minimap.frame.height <= console.panel.y + 0.01F);
+        }
     }
 }
 

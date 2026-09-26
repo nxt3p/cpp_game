@@ -59,6 +59,8 @@ void appendUpgradeSuffix(ItemMetadata& item) {
 [[nodiscard]] ItemRarity nextRarity(ItemRarity rarity) noexcept {
     switch (rarity) {
     case ItemRarity::Common:
+        return ItemRarity::Magic;
+    case ItemRarity::Magic:
         return ItemRarity::Rare;
     case ItemRarity::Rare:
         return ItemRarity::Legendary;
@@ -66,6 +68,8 @@ void appendUpgradeSuffix(ItemMetadata& item) {
         return ItemRarity::Legendary;
     case ItemRarity::Unique:
         return ItemRarity::Unique;
+    case ItemRarity::Mythical:
+        return ItemRarity::Mythical;
     }
     return ItemRarity::Common;
 }
@@ -148,11 +152,14 @@ int reinforceGearGoldCost(const int currentUpgradeLevel) noexcept {
 int masterworkGoldCost(const ItemRarity rarity) noexcept {
     switch (rarity) {
     case ItemRarity::Common:
-        return 120;
+        return 80;
+    case ItemRarity::Magic:
+        return 160;
     case ItemRarity::Rare:
         return 280;
     case ItemRarity::Legendary:
     case ItemRarity::Unique:
+    case ItemRarity::Mythical:
         return 0;
     }
     return 9999;

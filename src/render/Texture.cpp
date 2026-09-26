@@ -78,6 +78,34 @@ bool Texture::loadFromFile(const std::string& path, const bool pixelArtFiltering
     return true;
 }
 
+bool Texture::uploadRgba(
+    const int width,
+    const int height,
+    const unsigned char* pixels,
+    const bool pixelArtFiltering) {
+    if (pixels == nullptr || width <= 0 || height <= 0) {
+        return false;
+    }
+    if (textureId_ != 0U) {
+        glDeleteTextures(1, &textureId_);
+        textureId_ = 0U;
+    }
+
+    width_ = width;
+    height_ = height;
+    glGenTextures(1, &textureId_);
+    glBindTexture(GL_TEXTURE_2D, textureId_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width_, height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    const GLenum filter = pixelArtFiltering ? GL_NEAREST : GL_LINEAR;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    ENGINE_GL_CHECK();
+    return textureId_ != 0U;
+}
+
 void Texture::bind(const unsigned int textureUnit) const {
     glActiveTexture(GL_TEXTURE0 + textureUnit);
     glBindTexture(GL_TEXTURE_2D, textureId_);

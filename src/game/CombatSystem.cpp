@@ -25,9 +25,9 @@ MobCombatProfile CombatSystem::profileFor(
     const float xpMultiplier) noexcept {
     switch (kind) {
     case gameplay::EntityKind::ENEMY_MOB:
-        return {scaleStat(72, hpMultiplier), scaleStat(35, xpMultiplier)};
+        return {scaleStat(110, hpMultiplier), scaleStat(35, xpMultiplier)};
     case gameplay::EntityKind::ENEMY_BOSS:
-        return {scaleStat(240, hpMultiplier), scaleStat(140, xpMultiplier)};
+        return {scaleStat(360, hpMultiplier), scaleStat(140, xpMultiplier)};
     default:
         return {0, 0};
     }

@@ -6,13 +6,14 @@ namespace ui {
 
 namespace {
 
-constexpr float kRefHealthDiameter = 92.0F;
-constexpr float kRefManaDiameter = 76.0F;
-constexpr float kRefGlobeInset = 12.0F;
+constexpr float kRefBarWidth = 188.0F;
+constexpr float kRefBadge = 40.0F;
+constexpr float kRefClusterInset = 10.0F;
+constexpr float kRefBadgeGap = 8.0F;
 constexpr float kRefSlotSize = 42.0F;
 constexpr float kRefSlotGap = 4.0F;
 constexpr float kRefGroupGap = 14.0F;
-constexpr float kRefXpBarHeight = 4.0F;
+constexpr float kRefXpBarHeight = 10.0F;
 constexpr float kRefMessageHeight = 26.0F;
 constexpr float kRefMessageWidth = 740.0F;
 constexpr float kRefMenuIcon = 34.0F;
@@ -29,35 +30,32 @@ HudConsoleLayout computeHudConsoleLayout(const UiScale& scale) noexcept {
 
     layout.panel = {0.0F, screenH - consoleH, screenW, consoleH};
 
-    const float globeD = scale.dim(kRefHealthDiameter);
-    const float manaD = scale.dim(kRefManaDiameter);
-    const float globeInset = scale.dim(kRefGlobeInset);
-    const float globeY = layout.panel.y + (consoleH - globeD) * 0.55F;
-    layout.globeRadius = globeD * 0.5F;
-    layout.healthGlobe = {globeInset, globeY, globeD, globeD};
-    layout.manaGlobe = {
-        globeInset + globeD * 0.58F,
-        globeY + (globeD - manaD) * 0.55F,
-        manaD,
-        manaD};
+    const float inset = scale.dim(kRefClusterInset);
+    const float badge = scale.dim(kRefBadge);
+    const float labelH = scale.dim(14.0F);
+    const float barH = scale.dim(16.0F);
+    const float barGap = scale.dim(4.0F);
+    const float labelGap = scale.dim(1.0F);
+    const float badgeGap = scale.dim(kRefBadgeGap);
+    float barW = scale.dim(kRefBarWidth);
+    const float menuReserve =
+        static_cast<float>(HudConsoleLayout::kMenuIconCount) * scale.dim(kRefMenuIcon) +
+        static_cast<float>(HudConsoleLayout::kMenuIconCount - 1) * scale.dim(kRefMenuGap) +
+        scale.dim(24.0F);
+    const float maxBarRight = std::max(inset + badge + badgeGap + scale.dim(72.0F), screenW - menuReserve - scale.dim(120.0F));
+    barW = std::min(barW, std::max(scale.dim(72.0F), maxBarRight - (inset + badge + badgeGap)));
 
-    layout.levelBadge = {
-        layout.healthGlobe.x + globeD * 0.08F,
-        layout.healthGlobe.y + globeD - scale.dim(18.0F),
-        globeD * 0.95F,
-        scale.dim(18.0F)};
+    const float stackTop = layout.panel.y + scale.dim(20.0F);
+    const float barX = inset + badge + badgeGap;
+    layout.healthLabel = {barX, stackTop, barW, labelH};
+    layout.healthBar = {barX, stackTop + labelH + labelGap, barW, barH};
+    const float manaTop = layout.healthBar.y + barH + barGap;
+    layout.manaLabel = {barX, manaTop, barW, labelH};
+    layout.manaBar = {barX, manaTop + labelH + labelGap, barW, barH};
+    const float barStackTop = layout.healthBar.y;
+    const float barStackH = (layout.manaBar.y + barH) - barStackTop;
+    layout.levelBadge = {inset, barStackTop + (barStackH - badge) * 0.5F, badge, badge};
     layout.levelLabel = layout.levelBadge;
-
-    layout.healthLabel = {
-        layout.healthGlobe.x,
-        layout.healthGlobe.y + globeD * 0.36F,
-        globeD,
-        scale.dim(16.0F)};
-    layout.manaLabel = {
-        layout.manaGlobe.x,
-        layout.manaGlobe.y + manaD * 0.34F,
-        manaD,
-        scale.dim(14.0F)};
 
     const float menuSize = scale.dim(kRefMenuIcon);
     const float menuGap = scale.dim(kRefMenuGap);
@@ -75,7 +73,7 @@ HudConsoleLayout computeHudConsoleLayout(const UiScale& scale) noexcept {
             menuSize};
     }
 
-    const float slotsLeft = layout.manaGlobe.x + layout.manaGlobe.width + scale.dim(14.0F);
+    const float slotsLeft = layout.healthBar.x + layout.healthBar.width + scale.dim(16.0F);
     const float slotsRight = menuX - scale.dim(12.0F);
     const float available = std::max(scale.dim(160.0F), slotsRight - slotsLeft);
 
@@ -108,10 +106,10 @@ HudConsoleLayout computeHudConsoleLayout(const UiScale& scale) noexcept {
     layout.xpBar = {slotsLeft, layout.panel.y + scale.dim(6.0F), xpWidth, scale.dim(kRefXpBarHeight)};
 
     layout.soulsLabel = {
-        slotsLeft,
-        layout.panel.y + consoleH - scale.dim(16.0F),
-        std::min(scale.dim(280.0F), xpWidth),
-        scale.dim(14.0F)};
+        layout.healthBar.x,
+        layout.manaBar.y + layout.manaBar.height + scale.dim(3.0F),
+        layout.healthBar.width,
+        labelH};
 
     const float messageW = std::min(scale.dim(kRefMessageWidth), screenW * 0.7F);
     layout.messageStrip = {

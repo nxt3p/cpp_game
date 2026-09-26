@@ -328,6 +328,48 @@ void SpriteRenderer::drawBillboardOutline(
     engine::FrameProbe::instance().addDraw();
 }
 
+void SpriteRenderer::drawGroundQuad(
+    const Texture& texture,
+    const glm::vec3& center,
+    const float sizeX,
+    const float sizeZ,
+    const glm::mat4& view,
+    const glm::mat4& projection,
+    const glm::vec3& playerLightPosition,
+    const float lightRadius,
+    const float ambientDark,
+    const float ambientBright,
+    const glm::vec4& tint) const {
+    if (!texture.isValid() || sizeX <= 0.0F || sizeZ <= 0.0F) {
+        return;
+    }
+
+    const float halfX = sizeX * 0.5F;
+    const float halfZ = sizeZ * 0.5F;
+    const float y = center.y;
+    const std::array<float, 30> vertices = {
+        center.x - halfX, y, center.z - halfZ, 0.0F, 0.0F,
+        center.x + halfX, y, center.z - halfZ, 1.0F, 0.0F,
+        center.x + halfX, y, center.z + halfZ, 1.0F, 1.0F,
+        center.x + halfX, y, center.z + halfZ, 1.0F, 1.0F,
+        center.x - halfX, y, center.z + halfZ, 0.0F, 1.0F,
+        center.x - halfX, y, center.z - halfZ, 0.0F, 0.0F,
+    };
+    drawBillboardVertices(
+        shader_,
+        vao_,
+        vbo_,
+        vertices,
+        texture,
+        view,
+        projection,
+        playerLightPosition,
+        lightRadius,
+        ambientDark,
+        ambientBright,
+        tint);
+}
+
 void SpriteRenderer::drawGroundShadow(
     const Texture& texture,
     const glm::vec3& worldPosition,
