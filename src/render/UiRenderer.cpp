@@ -170,6 +170,32 @@ void UiRenderer::drawOutlineRect(
     drawFilledRect(x + width - lineWidth, y, lineWidth, height, color);
 }
 
+void UiRenderer::drawSolidTriangle(
+    const float x0,
+    const float y0,
+    const float x1,
+    const float y1,
+    const float x2,
+    const float y2,
+    const float color[4]) const {
+    if (color == nullptr) {
+        return;
+    }
+    if (batchOpen_ && batchTextured_) {
+        flushBatch();
+    }
+    batchOpen_ = true;
+    batchTextured_ = false;
+    batchTexture_ = nullptr;
+    appendVertex(x0, y0, 0.0F, 0.0F, color);
+    appendVertex(x1, y1, 0.0F, 0.0F, color);
+    appendVertex(x2, y2, 0.0F, 0.0F, color);
+    engine::FrameProbe::instance().addUiQuad();
+    if (!batching_) {
+        flushBatch();
+    }
+}
+
 void UiRenderer::drawFilledCircle(
     const float centerX,
     const float centerY,

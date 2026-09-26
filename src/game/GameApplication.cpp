@@ -426,15 +426,14 @@ struct GameApplication::Impl {
         float u1{1.0F};
         float v1{1.0F};
     };
-    /// One painted stage of one building. Color and outline share image-space UVs.
+    /// One painted stage of one building. `contour` is the alpha silhouette in image space.
     struct TownArtLayer {
         render::Texture color;
-        render::Texture outline;
         TownSpriteFrame frame{};
         std::vector<std::uint8_t> alpha;
+        std::vector<float> contour;
         int imageWidth{0};
         int imageHeight{0};
-        float outlineRadius{render::kTownSilhouetteRadius};
     };
     std::array<std::array<TownArtLayer, render::kTownArtStageCount>, render::kTownArtBuildingCount> townLayers_{};
     render::Texture townAdventure_;
@@ -3760,14 +3759,12 @@ struct GameApplication::Impl {
         layer.imageWidth = width;
         layer.imageHeight = height;
         layer.frame = scanTownFrame(pixels, width, height);
-        layer.outlineRadius = render::kTownSilhouetteRadius;
-        const render::TownSilhouette silhouette =
-            render::buildTownSilhouette(pixels, width, height, layer.outlineRadius);
-        layer.alpha = silhouette.alpha;
+        render::TownSilhouette silhouette =
+            render::buildTownSilhouette(pixels, width, height, render::kTownContourSimplify);
+        layer.alpha = std::move(silhouette.alpha);
+        layer.contour = std::move(silhouette.contour);
         const std::vector<std::uint8_t> color = flipRgba(pixels, width, height);
-        const std::vector<std::uint8_t> outline = flipRgba(silhouette.outline.data(), width, height);
         static_cast<void>(layer.color.uploadRgba(width, height, color.data(), true));
-        static_cast<void>(layer.outline.uploadRgba(width, height, outline.data(), true));
     }
 
     [[nodiscard]] bool loadTownLayerFile(TownArtLayer& layer, const std::string& path) {
@@ -4122,7 +4119,8 @@ struct GameApplication::Impl {
     }
 
     void drawTownSilhouette(const TownArtLayer& layer, const ui::Rect& sprite) const {
-        if (!layer.outline.isValid() || sprite.width < 2.0F || sprite.height < 2.0F || layer.imageWidth <= 0 ||
+        const std::size_t count = layer.contour.size() / 2U;
+        if (count < 3U || sprite.width < 2.0F || sprite.height < 2.0F || layer.imageWidth <= 0 ||
             layer.imageHeight <= 0) {
             return;
         }
@@ -4130,45 +4128,97 @@ struct GameApplication::Impl {
         const float imageH = static_cast<float>(layer.imageHeight);
         const float spanU = std::max(0.01F, layer.frame.u1 - layer.frame.u0);
         const float spanV = std::max(0.01F, layer.frame.v1 - layer.frame.v0);
-        const float texelX = sprite.width / (spanU * imageW);
-        const float texelY = sprite.height / (spanV * imageH);
-        const float pad = layer.outlineRadius;
-        float u0 = layer.frame.u0 - pad / imageW;
-        float u1 = layer.frame.u1 + pad / imageW;
-        float v0 = layer.frame.v0 - pad / imageH;
-        float v1 = layer.frame.v1 + pad / imageH;
-        float padL = pad * texelX;
-        float padR = pad * texelX;
-        float padT = pad * texelY;
-        float padB = pad * texelY;
-        if (u0 < 0.0F) {
-            padL += u0 * imageW * texelX;
-            u0 = 0.0F;
+
+        std::vector<float> px(count);
+        std::vector<float> py(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            const float u = layer.contour[index * 2U] / imageW;
+            const float v = layer.contour[index * 2U + 1U] / imageH;
+            px[index] = sprite.x + ((u - layer.frame.u0) / spanU) * sprite.width;
+            py[index] = sprite.y + ((v - layer.frame.v0) / spanV) * sprite.height;
         }
-        if (u1 > 1.0F) {
-            padR -= (u1 - 1.0F) * imageW * texelX;
-            u1 = 1.0F;
+
+        double area = 0.0;
+        for (std::size_t index = 0; index < count; ++index) {
+            const std::size_t next = (index + 1U) % count;
+            area += static_cast<double>(px[index]) * static_cast<double>(py[next]) -
+                static_cast<double>(px[next]) * static_cast<double>(py[index]);
         }
-        if (v0 < 0.0F) {
-            padT += v0 * imageH * texelY;
-            v0 = 0.0F;
+        const float wind = area >= 0.0 ? 1.0F : -1.0F;
+        constexpr float kOutside = 2.15F;
+
+        std::vector<float> ox(count);
+        std::vector<float> oy(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            const std::size_t prev = (index + count - 1U) % count;
+            const std::size_t next = (index + 1U) % count;
+            const float ax = px[index] - px[prev];
+            const float ay = py[index] - py[prev];
+            const float bx = px[next] - px[index];
+            const float by = py[next] - py[index];
+            const float aLength = std::sqrt(ax * ax + ay * ay);
+            const float bLength = std::sqrt(bx * bx + by * by);
+            float nx = 0.0F;
+            float ny = 0.0F;
+            if (aLength > 0.001F) {
+                nx += ay / aLength;
+                ny += -ax / aLength;
+            }
+            if (bLength > 0.001F) {
+                nx += by / bLength;
+                ny += -bx / bLength;
+            }
+            nx *= wind;
+            ny *= wind;
+            const float nLength = std::sqrt(nx * nx + ny * ny);
+            if (nLength < 0.001F) {
+                ox[index] = px[index];
+                oy[index] = py[index];
+                continue;
+            }
+            const float cross = ax * by - ay * bx;
+            const bool convex = cross * wind >= 0.0F;
+            const float miter = convex ? std::min(kOutside * 1.65F, (kOutside * 2.0F) / nLength) : kOutside;
+            ox[index] = px[index] + (nx / nLength) * miter;
+            oy[index] = py[index] + (ny / nLength) * miter;
         }
-        if (v1 > 1.0F) {
-            padB -= (v1 - 1.0F) * imageH * texelY;
-            v1 = 1.0F;
-        }
-        const float white[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-        uiRenderer.drawTexturedRectUV(
-            layer.outline,
-            sprite.x - padL,
-            sprite.y - padT,
-            sprite.width + padL + padR,
-            sprite.height + padT + padB,
-            u0,
-            1.0F - v1,
-            u1,
-            1.0F - v0,
-            white);
+
+        const auto stroke = [&](const float halfWidth, const float color[4]) {
+            for (std::size_t index = 0; index < count; ++index) {
+                const std::size_t next = (index + 1U) % count;
+                const float dx = ox[next] - ox[index];
+                const float dy = oy[next] - oy[index];
+                const float length = std::sqrt(dx * dx + dy * dy);
+                if (length > 0.05F) {
+                    const float sideX = (-dy / length) * halfWidth;
+                    const float sideY = (dx / length) * halfWidth;
+                    uiRenderer.drawSolidTriangle(
+                        ox[index] + sideX,
+                        oy[index] + sideY,
+                        ox[index] - sideX,
+                        oy[index] - sideY,
+                        ox[next] + sideX,
+                        oy[next] + sideY,
+                        color);
+                    uiRenderer.drawSolidTriangle(
+                        ox[index] - sideX,
+                        oy[index] - sideY,
+                        ox[next] - sideX,
+                        oy[next] - sideY,
+                        ox[next] + sideX,
+                        oy[next] + sideY,
+                        color);
+                }
+                uiRenderer.drawFilledCircle(ox[index], oy[index], halfWidth, color, 12);
+            }
+        };
+
+        const float shade[4] = {0.36F, 0.16F, 0.04F, 0.96F};
+        const float gold[4] = {1.0F, 0.82F, 0.28F, 1.0F};
+        const float core[4] = {1.0F, 0.96F, 0.72F, 1.0F};
+        stroke(3.15F, shade);
+        stroke(1.9F, gold);
+        stroke(0.95F, core);
     }
 
     void drawReadableCentered(const ui::Rect& bounds, const char* text, float scale, const float color[4]) const {

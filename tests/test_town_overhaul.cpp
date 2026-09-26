@@ -14,6 +14,7 @@
 #include "ui/UiScale.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -515,6 +516,38 @@ TEST_CASE("Town art stages map repair onto restored and fall back when a file is
     CHECK_FALSE(render::townStageRequired(static_cast<int>(render::TownArtStage::Upgraded)));
 }
 
+namespace {
+
+[[nodiscard]] float contourDistance2(const std::vector<float>& contour, const float x, const float y) {
+    const std::size_t count = contour.size() / 2U;
+    float best = 1.0e12F;
+    if (count == 0U) {
+        return best;
+    }
+    for (std::size_t index = 0; index < count; ++index) {
+        const std::size_t next = (index + 1U) % count;
+        const float ax = contour[index * 2U];
+        const float ay = contour[index * 2U + 1U];
+        const float bx = contour[next * 2U];
+        const float by = contour[next * 2U + 1U];
+        const float abx = bx - ax;
+        const float aby = by - ay;
+        const float apx = x - ax;
+        const float apy = y - ay;
+        const float ab2 = abx * abx + aby * aby;
+        float t = 0.0F;
+        if (ab2 > 1.0e-8F) {
+            t = std::clamp((apx * abx + apy * aby) / ab2, 0.0F, 1.0F);
+        }
+        const float dx = x - (ax + abx * t);
+        const float dy = y - (ay + aby * t);
+        best = std::min(best, dx * dx + dy * dy);
+    }
+    return best;
+}
+
+} // namespace
+
 TEST_CASE("Town hover outline follows the silhouette and ignores empty canvas", "[town]") {
     constexpr int kSize = 40;
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kSize * kSize * 4), 0);
@@ -525,28 +558,106 @@ TEST_CASE("Town hover outline follows the silhouette and ignores empty canvas", 
         pixels[index + 2U] = 40;
         pixels[index + 3U] = 255;
     };
-    for (int y = 8; y < 28; ++y) {
-        for (int x = 8; x < 14; ++x) {
+    for (int y = 4; y <= 30; ++y) {
+        const float along = static_cast<float>(y - 4) / 26.0F;
+        const int half = static_cast<int>(std::lround(along * 14.0F));
+        for (int x = 20 - half; x <= 20 + half; ++x) {
             plot(x, y);
         }
     }
-    for (int y = 8; y < 14; ++y) {
-        for (int x = 14; x < 30; ++x) {
-            plot(x, y);
+    plot(0, 0);
+    plot(1, 0);
+    plot(0, 1);
+    plot(1, 1);
+
+    const render::TownSilhouette outline = render::buildTownSilhouette(pixels.data(), kSize, kSize, 1.75F);
+    const std::size_t points = outline.contour.size() / 2U;
+    CHECK(points >= 3U);
+    float top = 1000.0F;
+    float topX = 0.0F;
+    float bandMinX = 1000.0F;
+    float bandMaxX = -1.0F;
+    for (std::size_t index = 0; index < points; ++index) {
+        const float x = outline.contour[index * 2U];
+        const float y = outline.contour[index * 2U + 1U];
+        if (y < top) {
+            top = y;
+            topX = x;
+        }
+        if (y < 10.0F) {
+            bandMinX = std::min(bandMinX, x);
+            bandMaxX = std::max(bandMaxX, x);
         }
     }
-    const render::TownSilhouette outline = render::buildTownSilhouette(pixels.data(), kSize, kSize, 3.5F);
-    const auto outlineAlpha = [&](const int x, const int y) {
-        return outline.outline[(static_cast<std::size_t>(y) * kSize + static_cast<std::size_t>(x)) * 4U + 3U];
-    };
-    CHECK(outlineAlpha(10, 18) == 0);
-    CHECK(outlineAlpha(6, 18) > 140);
-    CHECK(outlineAlpha(0, 0) == 0);
-    CHECK(outlineAlpha(26, 22) < 40);
+    CHECK(top < 8.0F);
+    CHECK(topX > 16.0F);
+    CHECK(topX < 24.0F);
+    CHECK(bandMaxX - bandMinX < 12.0F);
+    CHECK(contourDistance2(outline.contour, 6.0F, 4.0F) > 36.0F);
+    CHECK(contourDistance2(outline.contour, 0.5F, 0.5F) > 9.0F);
     CHECK(render::townSpriteOpaqueAt(
-        outline.alpha.data(), kSize, kSize, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 40.0F, 40.0F, 10.5F, 18.5F));
+        outline.alpha.data(), kSize, kSize, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 40.0F, 40.0F, 20.5F, 16.5F));
+    CHECK(render::townSpriteOpaqueAt(
+        outline.alpha.data(), kSize, kSize, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 40.0F, 40.0F, 0.5F, 0.5F));
     CHECK_FALSE(render::townSpriteOpaqueAt(
-        outline.alpha.data(), kSize, kSize, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 40.0F, 40.0F, 26.5F, 22.5F));
+        outline.alpha.data(), kSize, kSize, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 40.0F, 40.0F, 8.5F, 6.5F));
     CHECK_FALSE(render::townSpriteOpaqueAt(
         outline.alpha.data(), kSize, kSize, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 40.0F, 40.0F, 39.5F, 1.0F));
+}
+
+TEST_CASE("Town plate contours track the roof instead of the sprite box", "[town]") {
+    stbi_set_flip_vertically_on_load(0);
+    const auto expectPeakedContour = [](const char* file, const float topBand, const float spanLimit, const float cornerGap) {
+        const std::filesystem::path path =
+            std::filesystem::path{ENGINE_ASSETS_DIR} / "textures" / "town" / file;
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        unsigned char* pixels = stbi_load(path.string().c_str(), &width, &height, &channels, 4);
+        REQUIRE(pixels != nullptr);
+        const render::TownSilhouette silhouette = render::buildTownSilhouette(pixels, width, height);
+        int minX = width;
+        int minY = height;
+        int maxX = -1;
+        int maxY = -1;
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (pixels[(static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x)) * 4U +
+                        3U] < render::kTownOpaqueAlpha) {
+                    continue;
+                }
+                minX = std::min(minX, x);
+                minY = std::min(minY, y);
+                maxX = std::max(maxX, x);
+                maxY = std::max(maxY, y);
+            }
+        }
+        stbi_image_free(pixels);
+        const std::size_t points = silhouette.contour.size() / 2U;
+        CHECK(points > 12U);
+        const float boxW = static_cast<float>(maxX - minX + 1);
+        float contourTop = 100000.0F;
+        float bandMinX = 100000.0F;
+        float bandMaxX = -1.0F;
+        for (std::size_t index = 0; index < points; ++index) {
+            const float x = silhouette.contour[index * 2U];
+            const float y = silhouette.contour[index * 2U + 1U];
+            contourTop = std::min(contourTop, y);
+            if (y < static_cast<float>(minY) + topBand) {
+                bandMinX = std::min(bandMinX, x);
+                bandMaxX = std::max(bandMaxX, x);
+            }
+        }
+        CHECK(contourTop < static_cast<float>(minY) + 1.6F);
+        CHECK(bandMaxX > bandMinX);
+        CHECK(bandMaxX - bandMinX < boxW * spanLimit);
+        const float leftCorner = contourDistance2(
+            silhouette.contour, static_cast<float>(minX) + 0.5F, static_cast<float>(minY) + 0.5F);
+        const float rightCorner = contourDistance2(
+            silhouette.contour, static_cast<float>(maxX) + 0.5F, static_cast<float>(minY) + 0.5F);
+        CHECK(leftCorner > cornerGap * cornerGap);
+        CHECK(rightCorner > cornerGap * cornerGap);
+    };
+    expectPeakedContour("chapel_ruined.png", 36.0F, 0.35F, 40.0F);
+    expectPeakedContour("forge_ruined.png", 28.0F, 0.35F, 24.0F);
 }

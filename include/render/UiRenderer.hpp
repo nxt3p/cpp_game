@@ -25,6 +25,16 @@ public:
         const float color[4],
         float lineWidth = 2.0F) const;
 
+    /// One untextured triangle in screen space (y grows downward). Used for silhouette strokes.
+    void drawSolidTriangle(
+        float x0,
+        float y0,
+        float x1,
+        float y1,
+        float x2,
+        float y2,
+        const float color[4]) const;
+
     void drawTexturedRect(
         const Texture& texture,
         float x,
