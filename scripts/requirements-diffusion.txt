@@ -1,0 +1,13 @@
+# GPU atlas generation for scripts/generate_rpg_atlases_sd.py.
+# Install into a venv on the machine that has CUDA (RTX 5080).
+# CPU wheels work for --dry-run / --check only.
+torch>=2.4
+diffusers>=0.32.0
+transformers>=4.46
+accelerate>=0.34
+safetensors>=0.4
+peft>=0.13
+sentencepiece>=0.2
+protobuf>=4.25
+pillow>=10.0
+huggingface_hub>=0.26

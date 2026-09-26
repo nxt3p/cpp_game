@@ -212,6 +212,44 @@ cppGame/
 | `scripts/build-windows-x86_64.sh` | Cross-compile Windows exe |
 | `scripts/clean-build.sh` | Remove all `build*` directories |
 | `scripts/slice_world_assets.py` | Slice sprite sheets for world assets |
+| `scripts/generate_assets.py` | Procedural atlases (Pillow). Fallback if no GPU |
+| `scripts/generate_rpg_atlases_sd.py` | SDXL or FLUX.1-dev + LoRA atlas replacement |
+
+## Diffusion atlases (RTX 5080)
+
+`scripts/generate_rpg_atlases_sd.py` repaints `items_atlas.png`, UI skill and menu icons, and the warrior / ranger / mage / monster sheets. It keeps the existing JSON frame and clip layout, so the game loaders do not change. Prompts are original; the sheets are not copied from another game.
+
+This cloud environment has no CUDA, so the weights are not downloaded here. On WSL with the 5080 (`/home/dev/projects/cppGame`):
+
+```bash
+cd /home/dev/projects/cppGame
+python3 -m venv .venv-diffusion
+source .venv-diffusion/bin/activate
+python -m pip install -U pip
+python -m pip install -r scripts/requirements-diffusion.txt
+python scripts/generate_rpg_atlases_sd.py --backend sdxl
+```
+
+SDXL stack (default, fits 16 GB):
+
+| Role | Repo | Trigger | Weight |
+|------|------|---------|--------|
+| Base | `stabilityai/stable-diffusion-xl-base-1.0` | | |
+| Game-icon LoRA | `nerijs/pixel-art-xl` (`pixel-art-xl.safetensors`) | `pixel` | 0.90 |
+| RPG style LoRA | `ntc-ai/SDXL-LoRA-slider.fantasy` (`fantasy.safetensors`) | `fantasy` | 1.50 |
+
+Flux stack (license-gated base; accept it on the model page, then `huggingface-cli login`):
+
+| Role | Repo | Trigger | Weight |
+|------|------|---------|--------|
+| Base | `black-forest-labs/FLUX.1-dev` | | |
+| Pixel-RPG LoRA | `AIGCDuckBoss/fluxLora_pixelRPG` (`fluxLora_pixelrpg.safetensors`) | `The overall style of the illustration is colorful pixel style` | 0.85 |
+
+```bash
+python scripts/generate_rpg_atlases_sd.py --backend flux --cpu-offload
+```
+
+`--dry-run` prints every prompt. `--check` confirms those prompts still cover `items_atlas.json` and the directional clip JSON. `--groups items` limits a run to the inventory sheet.
 
 ## Graphics Quality
 

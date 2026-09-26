@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build deterministic 2.5D atlases. Item icons can be refined with SDXL.
 
-Procedural output (Pillow) is the source of truth for the hero sheet and for tests.
-A single diffusion still must not be pasted into the looping idle clip: that cell
-is a different character, so the warrior pops every idle frame and again on walk.
+Procedural output (Pillow) is the source of truth until a GPU pass replaces pixels.
+For the SDXL / FLUX.1-dev LoRA pipeline that repacks these same JSON layouts, run
+``scripts/generate_rpg_atlases_sd.py`` (see that file's docstring and the README).
 
   python3 scripts/generate_assets.py              # procedural, then try diffusion
   python3 scripts/generate_assets.py --no-diffusion
